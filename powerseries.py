@@ -134,6 +134,7 @@ gives back itself (and similarly for other series).
 
 from fractions import Fraction as F
 from itertools import count, islice, izip, chain, repeat
+from functools import partial
 
 from MemoizedGenerator import MemoizedGenerator
 
@@ -156,7 +157,7 @@ class PowerSeries(object):
     
     testlimit = 10
     
-    def __init__(self, g=None, f=None, l=None):
+    def __init__(self, g=None, f=None, l=None, dim=1):
         """Construct a PowerSeries from a generator, term function, or list.
         
         If ``g`` is given, construct the series using ``g`` as its generator.
@@ -173,9 +174,15 @@ class PowerSeries(object):
         if g:
             self.__g = g
         elif f:
-            def _g():
-                for n in count():
-                    yield f(n)
+            if dim == 1:
+                def _g():
+                    for n in count():
+                        yield f(n)
+            else:
+                def _g():
+                    for n in count():
+                        yield PowerSeries( f=partial(f, n), dim=dim-1)
+
             self.__g = _g
         elif l:
             def _l():
@@ -218,8 +225,6 @@ class PowerSeries(object):
         else:
             return self.zero == other and all( s == 0 for s in islice(self.tail, self.testlimit-1))
 
-        return NotImplemented
-    
     def __ne__(self, other):
         return not self == other
     
@@ -327,6 +332,30 @@ class PowerSeries(object):
                 yield PowerSeries(_f).shuffle(k-1)
         
         return PowerSeries(_g)
+
+    def contract( self ):
+        @MemoizedGenerator
+        def _g():
+            for term in ( self.zero + self.tail.contract().xmul ):
+                yield term
+                
+        return PowerSeries(_g)
+
+    def solve( self ):
+        @MemoizedGenerator
+        def _i():
+            g0 = self.zero
+            G = self.tail
+            if not isinstance(g0.zero, PowerSeries) and g0.zero == 0:
+                yield 0
+            else:
+                yield self.shuffle(1).zero.solve()
+
+            for term in (-g0 - I*I*G.tail(I).contract()).tail/G.zero:
+                yield term
+        
+        I = ps(_i)
+        return I
     
     def __add__(self, other):
         """Return a PowerSeries instance that sums self and other.
@@ -572,7 +601,21 @@ class PowerSeries(object):
                 yield term
         R = PowerSeries(_r)
         return R
-        
+
+    def __pow__( self, alpha ):
+        if not isinstance(self.zero, PowerSeries) and self.zero == 0:
+            raise ValueError
+
+        c0 = self.zero**alpha if isinstance(self.zero, PowerSeries) or self.zero != 1 else 1
+
+        @MemoizedGenerator
+        def _p():
+            for term in (P * self.derivative() / self).smul(alpha).integral( c0 ):
+                yield term
+
+        P = PowerSeries(_p)
+        return P
+
     def exponential(self):
         """Return a PowerSeries representing e ** self.
         
