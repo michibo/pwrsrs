@@ -1,3 +1,7 @@
+This is a fork of the powerseries library by Peter A. Donis which should at some point support multivariate powerseries. 
+This is a work in progress. 
+Here Peters README:
+
 Python Power Series
 ===================
 
