@@ -60,31 +60,31 @@ gives back itself (and similarly for other series).
     True
     >>> all(s == s.head + s.tail.xmul for s in testseries)
     True
-    >>> all(s == s + Fraction(0, 1) for s in testseries)
+    >>> all(s == s + F(0, 1) for s in testseries)
     True
-    >>> all(s == Fraction(0, 1) + s for s in testseries)
+    >>> all(s == F(0, 1) + s for s in testseries)
     True
     >>> all(s == s + ZERO for s in testseries)
     True
     >>> all(s == ZERO + s for s in testseries)
     True
-    >>> all(s == s - Fraction(0, 1) for s in testseries)
+    >>> all(s == s - F(0, 1) for s in testseries)
     True
-    >>> all((- s) == Fraction(0, 1) - s for s in testseries)
+    >>> all((- s) == F(0, 1) - s for s in testseries)
     True
     >>> all(s == s - ZERO for s in testseries)
     True
     >>> all((- s) == ZERO - s for s in testseries)
     True
-    >>> all(s == s * Fraction(1, 1) for s in testseries)
+    >>> all(s == s * F(1, 1) for s in testseries)
     True
-    >>> all(s == Fraction(1, 1) * s for s in testseries)
+    >>> all(s == F(1, 1) * s for s in testseries)
     True
     >>> all(s == s * ONE for s in testseries)
     True
     >>> all(s == ONE * s for s in testseries)
     True
-    >>> all(s == s / Fraction(1, 1) for s in testseries)
+    >>> all(s == s / F(1, 1) for s in testseries)
     True
     >>> all(s == s / ONE for s in testseries)
     True
@@ -104,7 +104,7 @@ gives back itself (and similarly for other series).
     True
     >>> all(s(inv(s)) == X for s in testseries)
     True
-    >>> all(exp(log(s)) - ONE == s for s in testseries)
+    >>> all(exp(log(ONE + s)) - ONE == s for s in testseries)
     True
     >>> inv(X) == X
     True
@@ -120,7 +120,7 @@ gives back itself (and similarly for other series).
     True
     >>> ONE + (TAN * TAN) == (SEC * SEC)
     True
-    >>> TWO = Fraction(2, 1) * ONE
+    >>> TWO = F(2, 1) * ONE
     >>> (exp(X) + exp(-X)) / TWO == COSH
     True
     >>> (exp(X) - exp(-X)) / TWO == SINH
@@ -132,15 +132,12 @@ gives back itself (and similarly for other series).
     
 """
 
-from fractions import Fraction
-from itertools import count, islice, izip, izip_longest
+from fractions import Fraction as F
+from itertools import count, islice, izip, chain, repeat
 
-from cached_class import cached_class
-from cached_property import cached_property
-from memoize_generator import memoize_generator
+from MemoizedGenerator import MemoizedGenerator
 
 
-@cached_class
 class PowerSeries(object):
     """Power series encapsulation.
     
@@ -188,37 +185,7 @@ class PowerSeries(object):
         else:
             # Empty series
             self.__g = None
-        # Internal fields for storing cached results of operations
-        self.__D = self.__E = self.__R = self.__I = self.__S = self.__L = None
-        self.__As = {}
-        self.__Ms = {}
-        self.__Cs = {}
-        self.__Is = {}
-    
-    @memoize_generator
-    def _gen(self):
-        """The full generator for this series.
-        
-        This method is for internal use only; the series generator should be
-        accessed publicly via the ``__iter__`` method (or anything that uses
-        it, such as a ``for`` loop).
-        
-        Note that we add an extra loop at the end of the series to yield zero
-        elements forever if our own generator exhausts itself. This allows
-        every series to look infinite when needed without requiring repetitive
-        code in generators.
-        
-        Note also that we "memoize" our generator so that, if it is realized
-        multiple times, the terms don't have to be recomputed. This provides
-        a dramatic speedup since computing an operation like multiplication
-        requires many realizations of the generator.
-        """
-        if self.__g:
-            for term in self.__g():
-                yield term
-        while True:
-            yield Fraction(0, 1)
-    
+               
     def __iter__(self):
         """Return an iterator over the series.
         
@@ -230,7 +197,7 @@ class PowerSeries(object):
         ``__iter__`` is a special method that is handled differently by
         Python, so decorators don't work properly with it.
         """
-        return self._gen()
+        return chain(self.__g(), repeat(0)) if self.__g else repeat(0)
     
     def __eq__(self, other):
         """Test PowerSeries for equality.
@@ -248,6 +215,9 @@ class PowerSeries(object):
         """
         if isinstance(other, PowerSeries):
             return all(s == o for s, o in islice(izip(self, other), self.testlimit))
+        else:
+            return self.zero == other and all( s == 0 for s in islice(self.tail, self.testlimit-1))
+
         return NotImplemented
     
     def __ne__(self, other):
@@ -265,15 +235,26 @@ class PowerSeries(object):
         """
         for term in islice(self, num or self.testlimit):
             print term
+
+    def getstr(self, num=None):
+        def gen_str():
+            is_pps = any( isinstance(term, PowerSeries) for term in islice(self, num or self.testlimit ) )
+            for term in islice(self, num or self.testlimit):
+                yield str(term) + ( ", " if not is_pps else "\n" )
+
+        return "".join(gen_str()) + "..."
+
+    def __str__(self):
+        return self.getstr()
     
-    @cached_property
+    @property
     def zero(self):
         """Return the zeroth term of this series.
         """
         for term in self:
             return term
     
-    @cached_property
+    @property
     def head(self):
         """Return a PowerSeries representing the "head" of this one.
         
@@ -285,7 +266,7 @@ class PowerSeries(object):
             yield self.zero
         return PowerSeries(_h)
     
-    @cached_property
+    @property
     def tail(self):
         """Return a PowerSeries representing the "tail" of this one.
         
@@ -300,7 +281,7 @@ class PowerSeries(object):
                 yield term
         return PowerSeries(_t)
     
-    @cached_property
+    @property
     def xmul(self):
         """Return a PowerSeries representing x * this one.
         
@@ -321,10 +302,31 @@ class PowerSeries(object):
         True
         """
         def _x():
-            yield Fraction(0, 1)
+            yield F(0, 1)
             for term in self:
                 yield term
         return PowerSeries(_x)
+
+    def shuffle( self, k ):
+        if k == 0:
+            return self
+        
+        def _g():
+            for n in count():
+                def _f():
+                    for term in self:
+                        if isinstance(term, PowerSeries):
+                            for e in islice(term, n, None):
+                                yield e
+                                break
+                        elif n == 0:
+                            yield term
+                        else:
+                            yield 0
+
+                yield PowerSeries(_f).shuffle(k-1)
+        
+        return PowerSeries(_g)
     
     def __add__(self, other):
         """Return a PowerSeries instance that sums self and other.
@@ -335,26 +337,23 @@ class PowerSeries(object):
         Addition of a number obeys the usual arithmetic identities:
         
         >>> e = expseries()
-        >>> e == e + Fraction(0, 1)
+        >>> e == e + F(0, 1)
         True
-        >>> e == Fraction(0, 1) + e
+        >>> e == F(0, 1) + e
         True
         """
-        if isinstance(other, Fraction):
-            oid = other
-            other = nthpower(0, coeff=other)
-        else:
-            oid = None
-        if isinstance(other, PowerSeries):
-            oid = oid or id(other)
-            if oid in self.__As:
-                return self.__As[oid]
+        if not isinstance(other, PowerSeries):
             def _a():
-                for terms in izip_longest(self, other, fillvalue=Fraction(0, 1)):
+                yield self.zero + other
+                for term in self.tail:
+                    yield term
+        else:
+            @MemoizedGenerator
+            def _a():
+                for terms in izip(self, other):
                     yield sum(terms)
-            A = self.__As[oid] = PowerSeries(_a)
-            return A
-        return NotImplemented
+
+        return PowerSeries(_a)
     
     __radd__ = __add__
     
@@ -365,7 +364,7 @@ class PowerSeries(object):
         hold when subtracting zero:
         
         >>> e = expseries()
-        >>> e == e - Fraction(0, 1)
+        >>> e == e - F(0, 1)
         True
         """
         return self + (- other)
@@ -377,10 +376,21 @@ class PowerSeries(object):
         similar identity to the above:
         
         >>> e = expseries()
-        >>> Fraction(0, 1) - e == (- e)
+        >>> F(0, 1) - e == (- e)
         True
         """
         return other + (- self)
+
+    def smul( self, other ):
+        if not isinstance(other, PowerSeries) and other == 0:
+            return 0
+
+        @MemoizedGenerator
+        def _m():
+            for term in self:
+                yield other*term
+
+        return PowerSeries(_m)
     
     def __mul__(self, other):
         """Return a PowerSeries instance that multiplies self and other.
@@ -388,9 +398,9 @@ class PowerSeries(object):
         Multiplication by a number obeys the usual arithmetic identities:
         
         >>> e = expseries()
-        >>> e == e * Fraction(1, 1)
+        >>> e == e * F(1, 1)
         True
-        >>> e == Fraction(1, 1) * e
+        >>> e == F(1, 1) * e
         True
         
         Since this operation is the key recursive one that others are
@@ -399,38 +409,28 @@ class PowerSeries(object):
         fraction with ``self``; since we know the terms will all be zero,
         we avoid realizing our own generator.
         """
-        if isinstance(other, Fraction):
-            if other == 1:
-                return self
-            if other == 0:
-                return PowerSeries()
-            if other in self.__Ms:
-                return self.__Ms[other]
-            def _m():
-                for term in self:
-                    yield other * term
-            oid = other
-        elif isinstance(other, PowerSeries):
-            oid = id(other)
-            if oid in self.__Ms:
-                return self.__Ms[oid]
+        if not isinstance(other, PowerSeries):
+            return self.smul( other )
+        else:
+            @MemoizedGenerator
             def _m():
                 f0 = self.zero
                 g0 = other.zero
                 yield f0 * g0
+                
                 F = self.tail
                 G = other.tail
+
                 mterms = [(F * G).xmul]
-                if f0 != 0:
-                    mterms.append(f0 * G)
-                if g0 != 0:
-                    mterms.append(g0 * F)
+                if isinstance(f0, PowerSeries) or f0 != 0:
+                    mterms.append(G.smul(f0))
+                if isinstance(g0, PowerSeries) or g0 != 0:
+                    mterms.append(F.smul(g0))
+
                 for terms in izip(*mterms):
                     yield sum(terms)
-        else:
-            return NotImplemented
-        M = self.__Ms[oid] = PowerSeries(_m)
-        return M
+
+            return PowerSeries(_m)
     
     __rmul__ = __mul__
     
@@ -443,7 +443,11 @@ class PowerSeries(object):
         >>> - (- e) == e
         True
         """
-        return Fraction(-1, 1) * self
+        def _n():
+            for term in self:
+                yield -term
+
+        return PowerSeries(_n)
     
     def __div__(self, other):
         """Easier way of expressing multiplication by the reciprocal.
@@ -455,25 +459,22 @@ class PowerSeries(object):
         >>> e = expseries()
         >>> e / e == nthpower(0)
         True
-        >>> e / Fraction(1, 1) == e
+        >>> e / F(1, 1) == e
         True
         """
-        if isinstance(other, Fraction):
-            return self * (Fraction(1, 1) / other)
-        if isinstance(other, PowerSeries):
+        if not isinstance(other, PowerSeries):
+            return self * (F(1,1) / other)
+        else:
             return self * other.reciprocal()
-        return NotImplemented
     
     def __rdiv__(self, other):
         """Easier way of accessing the reciprocal of self.
         
         >>> e = expseries()
-        >>> e * (Fraction(1, 1) / e) == nthpower(0)
+        >>> e * (F(1, 1) / e) == nthpower(0)
         True
         """
-        if isinstance(other, Fraction):
-            return other * self.reciprocal()
-        return NotImplemented
+        return other * self.reciprocal()
     
     def compose(self, other):
         """Return a PowerSeries instance that composes self with other.
@@ -484,19 +485,20 @@ class PowerSeries(object):
         >>> X(X) == X
         True
         """
-        oid = id(other)
-        if oid in self.__Cs:
-            return self.__Cs[oid]
-        if isinstance(other, PowerSeries):
-            if other.zero != 0:
+        if not isinstance(other, PowerSeries):
+            if other == 0:
+                return self.zero
+            else:
                 raise ValueError("First term of composed PowerSeries must be 0.")
-            def _c():
-                yield self.zero
-                for term in (other.tail * self.tail(other)):
-                    yield term
-            C = self.__Cs[oid] = PowerSeries(_c)
-            return C
-        raise TypeError("Can only compose a PowerSeries with another one.")
+
+        @MemoizedGenerator
+        def _c():
+            yield self(other.zero)
+
+            for term in (other.tail * self.tail(other)):
+                yield term
+
+        return PowerSeries(_c)
     
     def __call__(self, other):
         """Alternate, easier notation for ``self.compose(other)``.
@@ -508,23 +510,22 @@ class PowerSeries(object):
         
         Check differentiation of simple powers of x:
         
-        >>> all(nthpower(n).derivative() == Fraction(n, 1) * nthpower(n - 1) for n in xrange(10))
+        >>> all(nthpower(n).derivative() == n * nthpower(n - 1) for n in xrange(1,10))
         True
         """
-        if self.__D:
-            return self.__D
         def _d():
             for n, term in enumerate(self.tail):
-                yield Fraction(n + 1, 1) * term
-        D = self.__D = PowerSeries(_d)
-        return D
+                yield (n + 1) * term
+
+        return PowerSeries(_d)
+
     
-    def integral(self, const=Fraction(0, 1)):
+    def integral(self, const=F(0,1)):
         """Return a PowerSeries representing the integral of this one with respect to x.
         
         Check integration of simple powers of x:
         
-        >>> all(nthpower(n).integral() == Fraction(1, n + 1) * nthpower(n + 1) for n in xrange(10))
+        >>> all(nthpower(n).integral() == F(1, n + 1) * nthpower(n + 1) for n in xrange(10))
         True
         
         We can also test differentiation and integration by testing the identities:
@@ -535,15 +536,43 @@ class PowerSeries(object):
         >>> cos == cos.integral().derivative()
         True
         """
-        if const in self.__Is:
-            return self.__Is[const]
         def _i():
             yield const
             for n, term in enumerate(self):
-                yield Fraction(1, n + 1) * term
-        I = self.__Is[const] = PowerSeries(_i)
-        return I
-    
+                yield F(1, n + 1) * term
+
+        return PowerSeries(_i)
+       
+    def reciprocal(self):
+        """Return a PowerSeries representing the reciprocal of self.
+        
+        Note that the same trick we used in the exponential above also works here; R
+        appears in its own generator, but the generator yields a constant first, so
+        there is no infinite regress.
+        
+        The reciprocal obeys the obvious identity F * 1/F = 1:
+        
+        >>> e = expseries()
+        >>> e * e.reciprocal() == nthpower(0)
+        True
+        
+        We can also express the fact that 1/e^x = e^-x:
+        
+        >>> expseries().reciprocal() == (F(-1, 1) * nthpower(1)).exponential()
+        True
+        
+        Note that we can't take the reciprocal of a series with a zero first term
+        by this method.
+        """
+        @MemoizedGenerator
+        def _r():
+            recip = F(1, self.zero) if isinstance(self.zero, int) else 1/self.zero
+            yield recip
+            for term in ( (self.tail * R).smul(- recip)):
+                yield term
+        R = PowerSeries(_r)
+        return R
+        
     def exponential(self):
         """Return a PowerSeries representing e ** self.
         
@@ -570,49 +599,54 @@ class PowerSeries(object):
         Note that we can't exponentiate a series with a nonzero first term by this
         method.
         """
-        if self.__E:
-            return self.__E
-        if self.zero != 0:
-            raise ValueError("First term of exponentiated PowerSeries must be 0.")
+        @MemoizedGenerator
         def _e():
-            for term in (E * self.derivative()).integral(Fraction(1, 1)):
+            for term in (E * self.derivative()).integral(1):
                 yield term
-        E = self.__E = PowerSeries(_e)
+
+        E = PowerSeries(_e)
         return E
-    
-    def reciprocal(self):
-        """Return a PowerSeries representing the reciprocal of self.
+
+    def logarithm(self):
+        """Return a PowerSeries representing log(1 + self).
         
-        Note that the same trick we used in the exponential above also works here; R
-        appears in its own generator, but the generator yields a constant first, so
-        there is no infinite regress.
+        We can't actually take the log of self because log(0) diverges; we can only
+        do a power series expansion about some nonzero x0, and the simplest choice
+        is obviously x0 = 1. This means we can't take the log of a series with a
+        nonzero constant term by this method.
         
-        The reciprocal obeys the obvious identity F * 1/F = 1:
+        The following is the easiest test of this method:
         
-        >>> e = expseries()
-        >>> e * e.reciprocal() == nthpower(0)
+        >>> (1+nthpower(1)).logarithm() == altharmonicseries()
         True
         
-        We can also express the fact that 1/e^x = e^-x:
+        We can also express the fact that log(1) == 0, since this corresponds to
+        calling this method on the zero series:
         
-        >>> expseries().reciprocal() == (Fraction(-1, 1) * nthpower(1)).exponential()
+        >>> (1+PowerSeries()).logarithm() == PowerSeries()
         True
         
-        Note that we can't take the reciprocal of a series with a zero first term
-        by this method.
+        Finally, this method obeys the identity:
+        
+        >>> ONE = nthpower(0)
+        >>> X = nthpower(1)
+        >>> (1+X).logarithm().exponential() - ONE == X
+        True
         """
-        if self.__R:
-            return self.__R
-        if self.zero == 0:
-            raise ValueError("Cannot take reciprocal of PowerSeries with first term 0.")
-        def _r():
-            recip = Fraction(1, 1) / self.zero
-            yield recip
-            for term in ((- recip) * (self.tail * R)):
+        if not isinstance(self.zero, PowerSeries):
+            if self.zero != 1:
+                raise ValueError("Cannot take logarithm of PowerSeries with non-unit first term.")
+            c0 = 0
+        else:
+            c0 = self.zero.logarithm()
+ 
+        @MemoizedGenerator
+        def _l():
+            for term in (self.derivative() / self).integral(c0):
                 yield term
-        R = self.__R = PowerSeries(_r)
-        return R
-    
+
+        return PowerSeries(_l)
+
     def inverse(self):
         """Return a PowerSeries representing the inverse of self.
         
@@ -632,21 +666,20 @@ class PowerSeries(object):
         Note that we can't take the inverse of a series with a nonzero first term by
         this method.
         """
-        if self.__I:
-            return self.__I
         if self.zero != 0:
             raise ValueError("Cannot invert PowerSeries with nonzero first term.")
         if self.tail.zero == 0:
             raise ValueError("Cannot invert PowerSeries whose tail has zero first term.")
+        @MemoizedGenerator
         def _i():
-            yield Fraction(0, 1)
-            F = self.tail
-            recip = Fraction(1, 1) / F.zero
+            yield F(0, 1)
+            G = self.tail
+            recip = F(1, 1) / G.zero
             yield recip
             T = I.tail
-            for term in ((- recip) * ((T * T) * F.tail(I))):
+            for term in ((- recip) * ((T * T) * G.tail(I))):
                 yield term
-        I = self.__I = PowerSeries(_i)
+        I = PowerSeries(_i)
         return I
     
     def squareroot(self):
@@ -661,57 +694,20 @@ class PowerSeries(object):
         Note that we can't take the square root of a series with a zero first term by
         this method, because we need to take a reciprocal.
         """
-        if self.__S:
-            return self.__S
         if self.zero == 0:
             raise ValueError("Cannot take square root of PowerSeries with zero first term.")
         from math import sqrt as _sqrt
+        @MemoizedGenerator
         def _s():
-            s0 = Fraction.from_float(_sqrt(self.zero))
+            s0 = F.from_float(_sqrt(self.zero))
             yield s0
             for term in (self.tail * (s0 + S).reciprocal()):
                 yield term
-        S = self.__S = PowerSeries(_s)
+        S = PowerSeries(_s)
         return S
     
-    def logarithm(self):
-        """Return a PowerSeries representing log(1 + self).
-        
-        We can't actually take the log of self because log(0) diverges; we can only
-        do a power series expansion about some nonzero x0, and the simplest choice
-        is obviously x0 = 1. This means we can't take the log of a series with a
-        nonzero constant term by this method.
-        
-        The following is the easiest test of this method:
-        
-        >>> nthpower(1).logarithm() == altharmonicseries()
-        True
-        
-        We can also express the fact that log(1) == 0, since this corresponds to
-        calling this method on the zero series:
-        
-        >>> PowerSeries().logarithm() == PowerSeries()
-        True
-        
-        Finally, this method obeys the identity:
-        
-        >>> ONE = nthpower(0)
-        >>> X = nthpower(1)
-        >>> X.logarithm().exponential() - ONE == X
-        True
-        """
-        if self.__L:
-            return self.__L
-        if self.zero != 0:
-            raise ValueError("Cannot take logarithm of PowerSeries with nonzero first term.")
-        def _l():
-            for term in (self.derivative() / (Fraction(1, 1) + self)).integral():
-                yield term
-        L = self.__L = PowerSeries(_l)
-        return L
 
-
-def nthpower(n, coeff=Fraction(1, 1)):
+def nthpower(n, coeff=1):
     """A series giving the nth power of x.
     
     These series have many uses, particularly the first two, nthpower(0) and
@@ -727,9 +723,15 @@ def nthpower(n, coeff=Fraction(1, 1)):
     """
     def _n():
         for i in xrange(n):
-            yield Fraction(0, 1)
+            yield 0
         yield coeff
     return PowerSeries(_n)
+
+def addindex( entry ):
+    def _g( ):
+        yield entry
+
+    return PowerSeries( _g )
 
 
 # Some convenience functions for PowerSeries
@@ -786,7 +788,7 @@ def deriv(S):
     raise TypeError("Cannot differentiate object of type %s." % type(S))
 
 
-def integ(S, const=Fraction(0, 1)):
+def integ(S, const=F(0,1)):
     """Convenience function for integrating PowerSeries.
     """
     if isinstance(S, PowerSeries):
@@ -804,7 +806,7 @@ def constseries(const):
     
     >>> ONE = nthpower(0)
     >>> X = nthpower(1)
-    >>> constseries(Fraction(1, 1)) == ONE / (ONE - X)
+    >>> constseries(F(1, 1)) == ONE / (ONE - X)
     True
     """
     return PowerSeries(f=lambda n: const)
@@ -818,16 +820,16 @@ def altconstseries(const):
     
     >>> ONE = nthpower(0)
     >>> X = nthpower(1)
-    >>> altconstseries(Fraction(1, 1)) == ONE / (ONE + X)
+    >>> altconstseries(F(1, 1)) == ONE / (ONE + X)
     True
     """
-    return PowerSeries(f=lambda n: Fraction((1, -1)[n % 2], 1) * const)
+    return PowerSeries(f=lambda n: F((1, -1)[n % 2], 1) * const)
 
 
 def nseries():
     """The natural numbers as a PowerSeries.
     """
-    return PowerSeries(f=lambda n: Fraction(n, 1))
+    return PowerSeries(f=lambda n: F(n, 1))
 
 
 def harmonicseries():
@@ -852,10 +854,10 @@ def harmonicseries():
     The above also implies that this series is the integral of the
     constant series:
     
-    >>> integ(constseries(Fraction(1, 1))) == harmonicseries()
+    >>> integ(constseries(F(1, 1))) == harmonicseries()
     True
     """
-    return PowerSeries(f=lambda n: Fraction(1, n) if n else Fraction(0, 1))
+    return PowerSeries(f=lambda n: F(1, n) if n else F(0, 1))
 
 
 def altharmonicseries():
@@ -872,10 +874,10 @@ def altharmonicseries():
     The above also implies that this series is the integral of the
     alternating constant series:
     
-    >>> integ(altconstseries(Fraction(1, 1))) == altharmonicseries()
+    >>> integ(altconstseries(F(1, 1))) == altharmonicseries()
     True
     """
-    return PowerSeries(f=lambda n: Fraction((-1, 1)[n % 2], n) if n else Fraction(0, 1))
+    return PowerSeries(f=lambda n: F((-1, 1)[n % 2], n) if n else F(0, 1))
 
 
 def expseries():
@@ -905,11 +907,11 @@ def expseries():
     >>> EXP = expseries()
     >>> deriv(EXP) == EXP
     True
-    >>> integ(EXP, Fraction(1, 1)) == EXP
+    >>> integ(EXP, F(1, 1)) == EXP
     True
     """
     def _exp():
-        for term in integ(EXP, Fraction(1, 1)):
+        for term in integ(EXP, F(1, 1)):
             yield term
     EXP = PowerSeries(_exp)
     return EXP
@@ -935,7 +937,7 @@ def sinseries():
     True
     """
     def _sin():
-        for term in integ(integ(-SIN, Fraction(1, 1))):
+        for term in integ(integ(-SIN, F(1, 1))):
             yield term
     SIN = PowerSeries(_sin)
     return SIN
@@ -966,7 +968,7 @@ def cosseries():
     True
     """
     def _cos():
-        for term in integ(integ(-COS), Fraction(1, 1)):
+        for term in integ(integ(-COS), F(1, 1)):
             yield term
     COS = PowerSeries(_cos)
     return COS
@@ -1028,7 +1030,7 @@ def secseries():
     """
     def _sec():
         TAN = tanseries()
-        for term in integ(SEC * TAN, Fraction(1, 1)):
+        for term in integ(SEC * TAN, F(1, 1)):
             yield term
     SEC = PowerSeries(_sec)
     return SEC
@@ -1136,7 +1138,7 @@ def sinhseries():
     True
     """
     def _sinh():
-        for term in integ(integ(SINH, Fraction(1, 1))):
+        for term in integ(integ(SINH, F(1, 1))):
             yield term
     SINH = PowerSeries(_sinh)
     return SINH
@@ -1167,7 +1169,7 @@ def coshseries():
     True
     """
     def _cosh():
-        for term in integ(integ(COSH), Fraction(1, 1)):
+        for term in integ(integ(COSH), F(1, 1)):
             yield term
     COSH = PowerSeries(_cosh)
     return COSH
@@ -1224,7 +1226,7 @@ def sechseries():
     """
     def _sech():
         TANH = tanhseries()
-        for term in integ(- SECH * TANH, Fraction(1, 1)):
+        for term in integ(- SECH * TANH, F(1, 1)):
             yield term
     SECH = PowerSeries(_sech)
     return SECH
@@ -1312,7 +1314,7 @@ def arctanhseries():
 
 # Alternate implementations of certain series, for comparison
 
-def altnthpower(n, coeff=Fraction(1, 1)):
+def altnthpower(n, coeff=F(1, 1)):
     """Alternate implementation of nth power using lists.
     
     This implementation tests the usage of a finite list in the
@@ -1328,7 +1330,7 @@ def altnthpower(n, coeff=Fraction(1, 1)):
     """
     _l = (coeff,)
     if n > 0:
-        _l = ((Fraction(0, 1),) * n) + _l
+        _l = ((F(0, 1),) * n) + _l
     return PowerSeries(l=_l)
 
 
@@ -1344,7 +1346,7 @@ def altexpseries():
     True
     """
     from math import factorial
-    return PowerSeries(f=lambda n: Fraction(1, factorial(n)))
+    return PowerSeries(f=lambda n: F(1, factorial(n)))
 
 
 def altsinseries():
@@ -1359,7 +1361,7 @@ def altsinseries():
     True
     """
     from math import factorial
-    return PowerSeries(f=lambda n: Fraction((1, -1)[(n//2) % 2], factorial(n)) if (n % 2) == 1 else Fraction(0, 1))
+    return PowerSeries(f=lambda n: F((1, -1)[(n//2) % 2], factorial(n)) if (n % 2) == 1 else F(0, 1))
 
 
 def altcosseries():
@@ -1374,7 +1376,7 @@ def altcosseries():
     True
     """
     from math import factorial
-    return PowerSeries(f=lambda n: Fraction((1, -1)[(n//2) % 2], factorial(n)) if (n % 2) == 0 else Fraction(0, 1))
+    return PowerSeries(f=lambda n: F((1, -1)[(n//2) % 2], factorial(n)) if (n % 2) == 0 else F(0, 1))
 
 
 def alttanseries():
@@ -1433,7 +1435,7 @@ def altsinhseries():
     True
     """
     from math import factorial
-    return PowerSeries(f=lambda n: Fraction(1, factorial(n)) if (n % 2) == 1 else Fraction(0, 1))
+    return PowerSeries(f=lambda n: F(1, factorial(n)) if (n % 2) == 1 else F(0, 1))
 
 
 def altcoshseries():
@@ -1448,7 +1450,7 @@ def altcoshseries():
     True
     """
     from math import factorial
-    return PowerSeries(f=lambda n: Fraction(1, factorial(n)) if (n % 2) == 0 else Fraction(0, 1))
+    return PowerSeries(f=lambda n: F(1, factorial(n)) if (n % 2) == 0 else F(0, 1))
 
 
 def alttanhseries():

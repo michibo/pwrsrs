@@ -122,7 +122,7 @@ class MemoizedGenerator(object):
         self.__iter = None
         self.__empty = False
     
-    def __call__(self, *args, **kwargs):
+    def __call__(self):
         """Make instances of this class callable.
         
         This method must be present, and must be a generator
@@ -130,7 +130,7 @@ class MemoizedGenerator(object):
         underlying generators.
         """
         if not (self.__empty or self.__iter):
-            self.__iter = self.__gen(*args, **kwargs)
+            self.__iter = self.__gen()
         for n in count():
             # First check the cache
             if n < len(self.__cache):
