@@ -345,16 +345,23 @@ class PowerSeries(object):
         @MemoizedGenerator
         def _i():
             g0 = self.zero
-            G = self.tail
+            if not isinstance(g0, PowerSeries):
+                if g0 == 0:
+                    yield 0
+                    return
+                else:
+                    raise ValueError
+
             if not isinstance(g0.zero, PowerSeries) and g0.zero == 0:
                 yield 0
             else:
                 yield self.shuffle(1).zero.solve()
 
+            G = self.tail
             for term in (-g0 - I*I*G.tail(I).contract()).tail/G.zero:
                 yield term
         
-        I = ps(_i)
+        I = PowerSeries(_i)
         return I
     
     def __add__(self, other):
