@@ -1,13 +1,9 @@
 
 from powerseries import PowerSeries as ps
-from powerseries import nthpower, addindex
+from powerseries import X,Y,Z,I
 from operator import mul
+from math import factorial
 from fractions import Fraction as F
-
-X = nthpower(1)
-
-Y = addindex(X)
-Z = addindex(Y)
 
 def f_binomial( n, k ):
     if k < 0:
@@ -25,7 +21,6 @@ def test_binomial():
     print "BINOMIAL TEST"
     
     A = ps(f=f_binomial, dim=2)
-    print A
 
     B = 1 / (1 - X - X*Y)
 
@@ -53,29 +48,45 @@ def test_binomial():
 
 def test_compose():
     print "COMPOSE TEST"
-    k = 5
-    A = reduce(mul, [1+X]*k)
+    for k in range(1,20):
+        A = (reduce(mul, [1+X]*k)).tensor(I)
 
-    B = 1/ (1-X) - 1
+        B = 1/ (1-X) - 1
 
-    def f_power( n ):
-        return f_binomial(n + k - 1, n)
-    C = ps(f=f_power)
+        def f_power( n ):
+            return f_binomial(n + k - 1, n)
+        C = ps(f=f_power)
 
-    D = A(B)
+        D = A(B)
 
-    if C == D:
+        if C == D:
+            print k, "1. TEST PASSED"
+        else:
+            print k, "1. TEST FAILED"
+
+        
+        E = (B+1)**k
+
+        if C == E:
+            print k, "2. TEST PASSED"
+        else:
+            print k, "2. TEST FAILED"
+
+def test_solve():
+    T = Y * X.exponential()
+    R = T.solve()
+
+    def f_caylay(n):
+        if n == 0:
+            return 0
+        return F((n)**(n-1), factorial(n))
+
+    print ps(f=f_caylay)
+    print R
+    if R == ps(f=f_caylay):
         print "1. TEST PASSED"
     else:
         print "1. TEST FAILED"
-
-    
-    E = (B+1)**k
-
-    if C == E:
-        print "2. TEST PASSED"
-    else:
-        print "2. TEST FAILED"
 
 def test_exp():
     A = (X.exponential()).logarithm()
@@ -115,7 +126,7 @@ def test_shuffle():
 
     binomial2 = 1/(1-Z*X-X)
 
-    if binomial2.shuffle(2) == addindex(1/(1-X*Y-Y)):
+    if binomial2.shuffle(2) == I.tensor(1/(1-X*Y-Y)):
         print "1. PASSED"
     else:
         print "1. FAILED"
@@ -126,6 +137,7 @@ def main():
     test_compose()
     test_exp()
     test_pow()
+    test_solve()
 
 if __name__ == "__main__":
     main()

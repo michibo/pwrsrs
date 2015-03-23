@@ -135,6 +135,7 @@ gives back itself (and similarly for other series).
 from fractions import Fraction as F
 from itertools import count, islice, izip, chain, repeat
 from functools import partial
+from math import factorial
 
 from MemoizedGenerator import MemoizedGenerator
 
@@ -249,6 +250,14 @@ class PowerSeries(object):
 
         return "".join(gen_str()) + "..."
 
+    def getstrexp(self, num=None):
+        def gen_str():
+            is_pps = any( isinstance(term, PowerSeries) for term in islice(self, num or self.testlimit ) )
+            for term,n in islice(izip(self, count()), num or self.testlimit):
+                yield str(term*factorial(n)) + ( ", " if not is_pps else "\n" )
+
+        return "".join(gen_str()) + "..."
+
     def __str__(self):
         return self.getstr()
     
@@ -307,7 +316,7 @@ class PowerSeries(object):
         True
         """
         def _x():
-            yield F(0, 1)
+            yield 0
             for term in self:
                 yield term
         return PowerSeries(_x)
@@ -316,6 +325,7 @@ class PowerSeries(object):
         if k == 0:
             return self
         
+        @MemoizedGenerator
         def _g():
             for n in count():
                 def _f():
@@ -343,32 +353,43 @@ class PowerSeries(object):
                 
         return PowerSeries(_g)
 
+
     def solve( self ):
         # Solve f(g,X,...) = g
         # g = f0(X,...) + g * F(g,X,...)
         # Solve for g plugged into the active variable f(g(X,...),X,...) = 0
         # f0(X,...) + f1(X,...) g(X) + FF(g(X,...),X,...) g(X,...)^2 = 0
         # => g(X,...) = 1/f1(X,...) * (-f0(X,...) - FF(g(X,...),X,...) g(X,...)^2)
-        @MemoizedGenerator
-        def _i():
-            g0 = self.zero
-            if not isinstance(g0, PowerSeries):
-                if g0 == 0:
-                    yield 0
-                    return
-                else:
-                    raise ValueError
-
-            if not isinstance(g0.zero, PowerSeries) and g0.zero == 0:
-                yield 0
+        g0 = self.zero
+        if not isinstance(g0, PowerSeries):
+            if g0 == 0:
+                return 0 
             else:
                 raise ValueError
-                yield g0.solve().contract()
+            
+#        @MemoizedGenerator
+##        def _i():
+#            G = self.tail
+#            
+#            c0 = (g0.zero/(1 - G.shuffle(1).zero)).solve()
+#
+#            for term in (self.shuffle(1).derivative().shuffle(1)(I)/(1-self.derivative()(I))).integral(c0):
+#                yield term
+#
+#
+#        I = PowerSeries(_i)
+#        return I
 
+        @MemoizedGenerator
+        def _i():
             G = self.tail
-            for term in (-g0 - I*I*G.tail(I).contract()).tail/G.zero:
+            
+            yield (g0.zero/(1 - G.shuffle(1).zero)).solve()
+
+            R = g0 / (1 - G(I))
+            for term in R.tail:
                 yield term
-        
+
         I = PowerSeries(_i)
         return I
     
@@ -387,6 +408,7 @@ class PowerSeries(object):
         True
         """
         if not isinstance(other, PowerSeries):
+            @MemoizedGenerator
             def _a():
                 yield self.zero + other
                 for term in self.tail:
@@ -426,15 +448,23 @@ class PowerSeries(object):
         return other + (- self)
 
     def smul( self, other ):
-        if not isinstance(other, PowerSeries) and other == 0:
-            return 0
-
         @MemoizedGenerator
         def _m():
             for term in self:
                 yield other*term
 
         return PowerSeries(_m)
+
+    def tensor( self, other ):
+        @MemoizedGenerator
+        def _t():
+            for term in self:
+                if isinstance(term, PowerSeries):
+                    yield term.tensor( other )
+                else:
+                    yield term * other
+
+        return PowerSeries(_t)
     
     def __mul__(self, other):
         """Return a PowerSeries instance that multiplies self and other.
@@ -507,7 +537,7 @@ class PowerSeries(object):
         True
         """
         if not isinstance(other, PowerSeries):
-            return self * (F(1,1) / other)
+            return self * (1 / other)
         else:
             return self * other.reciprocal()
     
@@ -538,9 +568,27 @@ class PowerSeries(object):
 
         @MemoizedGenerator
         def _c():
-            yield self(other.zero)
+            g0 = self.zero
+            G = self.tail
 
-            for term in (other.tail * self.tail(other)):
+            c0 = g0.zero + other.zero * G.shuffle(1).zero(other.zero)
+
+            R = other.derivative()*(self.derivative()(other)) + self.shuffle(1).derivative().shuffle(1)(other)
+            for term in (R).integral(c0):
+                yield term
+
+        return PowerSeries(_c)
+
+        @MemoizedGenerator
+        def _c():
+            g0 = self.zero
+            G = self.tail
+
+            R0 = g0.zero + other.zero * G.shuffle(1).zero(other.zero)
+            yield R0
+            R1 = g0 + other * G(other)
+
+            for term in R1.tail:
                 yield term
 
         return PowerSeries(_c)
@@ -558,6 +606,7 @@ class PowerSeries(object):
         >>> all(nthpower(n).derivative() == n * nthpower(n - 1) for n in xrange(1,10))
         True
         """
+        @MemoizedGenerator
         def _d():
             for n, term in enumerate(self.tail):
                 yield (n + 1) * term
@@ -581,6 +630,7 @@ class PowerSeries(object):
         >>> cos == cos.integral().derivative()
         True
         """
+        @MemoizedGenerator
         def _i():
             yield const
             for n, term in enumerate(self):
@@ -626,7 +676,7 @@ class PowerSeries(object):
 
         @MemoizedGenerator
         def _p():
-            for term in (P * self.derivative() / self).smul(alpha).integral( c0 ):
+            for term in (alpha * P * self.derivative() / self).integral( c0 ):
                 yield term
 
         P = PowerSeries(_p)
@@ -765,7 +815,6 @@ class PowerSeries(object):
         S = PowerSeries(_s)
         return S
     
-
 def nthpower(n, coeff=1):
     """A series giving the nth power of x.
     
@@ -786,12 +835,10 @@ def nthpower(n, coeff=1):
         yield coeff
     return PowerSeries(_n)
 
-def addindex( entry ):
-    def _g( ):
-        yield entry
-
-    return PowerSeries( _g )
-
+I =  nthpower(0) 
+X =  nthpower(1) 
+Y = I.tensor( X )
+Z = I.tensor( Y )
 
 # Some convenience functions for PowerSeries
 
