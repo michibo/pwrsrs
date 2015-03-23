@@ -336,12 +336,19 @@ class PowerSeries(object):
     def contract( self ):
         @MemoizedGenerator
         def _g():
-            for term in ( self.zero + self.tail.contract().xmul ):
-                yield term
+            yield self.zero.zero
+
+            for t1, t2  in izip(self.zero.tail, self.tail.contract()):
+                yield t1+t2
                 
         return PowerSeries(_g)
 
     def solve( self ):
+        # Solve f(g,X,...) = g
+        # g = f0(X,...) + g * F(g,X,...)
+        # Solve for g plugged into the active variable f(g(X,...),X,...) = 0
+        # f0(X,...) + f1(X,...) g(X) + FF(g(X,...),X,...) g(X,...)^2 = 0
+        # => g(X,...) = 1/f1(X,...) * (-f0(X,...) - FF(g(X,...),X,...) g(X,...)^2)
         @MemoizedGenerator
         def _i():
             g0 = self.zero
@@ -355,7 +362,8 @@ class PowerSeries(object):
             if not isinstance(g0.zero, PowerSeries) and g0.zero == 0:
                 yield 0
             else:
-                yield self.shuffle(1).zero.solve()
+                raise ValueError
+                yield g0.solve().contract()
 
             G = self.tail
             for term in (-g0 - I*I*G.tail(I).contract()).tail/G.zero:
@@ -521,6 +529,7 @@ class PowerSeries(object):
         >>> X(X) == X
         True
         """
+        # f(g(X,...),X,...) = f0(X,...) + g(X,...) * F(g(X,...),X,...)
         if not isinstance(other, PowerSeries):
             if other == 0:
                 return self.zero
