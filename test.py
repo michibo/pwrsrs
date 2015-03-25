@@ -40,7 +40,7 @@ def test_binomial():
 
     C = ps(f=f_fibonacci)
 
-    A = A.contract().xmul
+    A = A(X).xmul
 
     if A == C:
         print "2. TEST PASSED"
@@ -73,6 +73,8 @@ def test_compose():
         else:
             print k, "2. TEST FAILED"
 def test_exp():
+    print "EXP Test"
+
     A = (X.exponential()).logarithm()
     if A == X:
         print "1. TEST PASSED"
@@ -88,6 +90,7 @@ def test_exp():
         print "2. TEST FAILED"
 
 def test_pow():
+    print "POW TEST"
 
     n = F(1,2)
     def f_pow(k):
@@ -102,6 +105,8 @@ def test_pow():
         print "1. TEST FAILED"
 
 def test_shuffle():
+    print "SHUFFLE TEST"
+
     binomial = 1/(1-Y*X-X)
     if binomial.shuffle(1) == 1/(1-X*Y-Y):
         print "1. PASSED"
@@ -115,7 +120,22 @@ def test_shuffle():
     else:
         print "1. FAILED"
 
+def test_inverse():
+    print "INVERSE TEST"
+
+    if (X.exponential()-1) == (1+X).logarithm().inverse():
+        print "1. PASSED"
+    else:
+        print "1. FAILED"
+
+    if (X.exponential()-1-Y) == (1+X+Y).logarithm().inverse():
+        print "2. PASSED"
+    else:
+        print "2. FAILED"
+
+
 def test_solve():
+    print "SOLVE TEST"
     
     A = X + Y.exponential()-1 + Z
     T = Y * X.exponential()
@@ -126,8 +146,6 @@ def test_solve():
             return 0
         return F((n)**(n-1), factorial(n))
 
-    print ps(f=f_caylay)
-    print R
     if R == ps(f=f_caylay):
         print "1. TEST PASSED"
     else:
@@ -135,6 +153,7 @@ def test_solve():
 
 
 def main():
+    test_inverse()
     test_solve()
     test_shuffle()
     test_binomial()

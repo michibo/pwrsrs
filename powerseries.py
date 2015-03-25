@@ -156,7 +156,7 @@ class PowerSeries(object):
     to speed computations.
     """
     
-    testlimit = 10
+    testlimit = 20
     
     def __init__(self, g=None, f=None, l=None, dim=1):
         """Construct a PowerSeries from a generator, term function, or list.
@@ -339,36 +339,6 @@ class PowerSeries(object):
         
         return PowerSeries(_g)
 
-    def contract( self ):
-        @MemoizedGenerator
-        def _g():
-            yield self.zero.zero
-
-            for t1, t2  in izip(self.zero.tail, self.tail.contract()):
-                yield t1+t2
-                
-        return PowerSeries(_g)
-
-    def solve( self ):
-        g0 = self.zero
-        if not isinstance(g0, PowerSeries):
-            if g0 == 0:
-                return 0 
-            else:
-                raise ValueError
-            
-        @MemoizedGenerator
-        def _i():
-            G = self.tail
-            
-            c0 = (g0.zero/(1 - G.shuffle(1).zero)).solve()
-
-            for term in (self.shuffle(1).derivative().shuffle(1) / (1-self.derivative()))(I).integral(c0):
-                yield term
-
-        I = PowerSeries(_i)
-        return I
-    
     def __add__(self, other):
         """Return a PowerSeries instance that sums self and other.
         
@@ -493,6 +463,7 @@ class PowerSeries(object):
         >>> - (- e) == e
         True
         """
+        @MemoizedGenerator
         def _n():
             for term in self:
                 yield -term
@@ -527,6 +498,9 @@ class PowerSeries(object):
         return other * self.reciprocal()
     
     def compose(self, other):
+        # With self = g and other = f
+        # Calculates g(f(x,...),x,...)
+        
         """Return a PowerSeries instance that composes self with other.
         
         The identity for series composition is the series representing x:
@@ -535,7 +509,6 @@ class PowerSeries(object):
         >>> X(X) == X
         True
         """
-        # f(g(X,...),X,...) = f0(X,...) + g(X,...) * F(g(X,...),X,...)
         if not isinstance(other, PowerSeries):
             if other == 0:
                 return self.zero
@@ -544,15 +517,102 @@ class PowerSeries(object):
 
         @MemoizedGenerator
         def _c():
-            c0 = self.shuffle(1).zero(other.zero)
-            F = other.tail
-
-            R = (self.derivative().smul(F.derivative().xmul + F) + self.shuffle(1).derivative().shuffle(1))(other)
+            S = self.shuffle(1)
+            c0 = S.zero(other.zero)
+            R = (self.derivative().smul(other.derivative()) + S.derivative().shuffle(1))(other)
             for term in R.integral(c0):
                 yield term
 
         return PowerSeries(_c)
     
+    def compose2(self, other):
+        # With self = g and other = f
+        # Calculates g(f(x,y,...),y,...)
+        # Note that this is a special case of compose
+        # I.tensor(A.shuffle(1)).shuffle(1).compose(B) == A.compose2(B)
+
+        """Return a PowerSeries instance that composes self with other.
+        
+        The identity for series composition is the series representing x:
+        
+        >>> X = nthpower(1)
+        >>> X(X) == X
+        True
+        """
+        if not isinstance(other, PowerSeries):
+            raise ValueError("First term of composed PowerSeries must be 0.")
+
+        @MemoizedGenerator
+        def _c():
+            c0 = self(other.zero)
+
+            R = (self.derivative().compose2(other) * other.derivative()).integral(c0)
+            
+            for term in R:
+                yield term
+
+        return PowerSeries(_c)
+                        
+    def solve( self ):
+        # With self = g
+        # Calculates f(x,...)
+        # Satisfying f(x,...) = g(f(x,...),x,...)
+
+        g0 = self.zero
+        if not isinstance(g0, PowerSeries):
+            if g0 == 0:
+                return 0 
+            else:
+                raise ValueError
+            
+        @MemoizedGenerator
+        def _i():
+            G = self.shuffle(1)
+            c0 = G.zero.solve()
+
+            for term in (G.derivative().shuffle(1) / (1-self.derivative()))(I).integral(c0):
+                yield term
+
+        I = PowerSeries(_i)
+        return I
+
+    def inverse(self):
+        # With self = g
+        # Calculates f(x,...)
+        # Satisfying x = g(f(x,...),y,...)
+        # Note that this is a special case of solve
+        # (I.tensor(A.shuffle(1)).shuffle(1) + X - Y).solve() == A.inverse()
+
+        """Return a PowerSeries representing the inverse of self.
+        
+        The inverse obeys the identity F(inv(F)) == x:
+        
+        >>> X = nthpower(1)
+        >>> N = nseries()
+        >>> N(N.inverse()) == X
+        True
+        
+        The series representing x is its own inverse, since it is the
+        identity with respect to function composition:
+        
+        >>> X == X.inverse()
+        True
+        
+        Note that we can't take the inverse of a series with a nonzero first term by
+        this method.
+        """
+        @MemoizedGenerator
+        def _i():
+            c0 = (self+X).solve()
+
+            R = (1/self.derivative().compose2( I )).integral(c0)
+            
+            for term in R:
+                yield term
+
+        I = PowerSeries(_i)
+        return I
+
     def __call__(self, other):
         """Alternate, easier notation for ``self.compose(other)``.
         """
@@ -724,64 +784,6 @@ class PowerSeries(object):
 
         return PowerSeries(_l)
 
-    def inverse(self):
-        """Return a PowerSeries representing the inverse of self.
-        
-        The inverse obeys the identity F(inv(F)) == x:
-        
-        >>> X = nthpower(1)
-        >>> N = nseries()
-        >>> N(N.inverse()) == X
-        True
-        
-        The series representing x is its own inverse, since it is the
-        identity with respect to function composition:
-        
-        >>> X == X.inverse()
-        True
-        
-        Note that we can't take the inverse of a series with a nonzero first term by
-        this method.
-        """
-        if self.zero != 0:
-            raise ValueError("Cannot invert PowerSeries with nonzero first term.")
-        if self.tail.zero == 0:
-            raise ValueError("Cannot invert PowerSeries whose tail has zero first term.")
-        @MemoizedGenerator
-        def _i():
-            yield F(0, 1)
-            G = self.tail
-            recip = F(1, 1) / G.zero
-            yield recip
-            T = I.tail
-            for term in ((- recip) * ((T * T) * G.tail(I))):
-                yield term
-        I = PowerSeries(_i)
-        return I
-    
-    def squareroot(self):
-        """Return a PowerSeries representing sqrt(self).
-        
-        The square root obeys the obvious identity:
-        
-        >>> EXP = expseries()
-        >>> (EXP.squareroot() * EXP.squareroot()) == EXP
-        True
-        
-        Note that we can't take the square root of a series with a zero first term by
-        this method, because we need to take a reciprocal.
-        """
-        if self.zero == 0:
-            raise ValueError("Cannot take square root of PowerSeries with zero first term.")
-        from math import sqrt as _sqrt
-        @MemoizedGenerator
-        def _s():
-            s0 = F.from_float(_sqrt(self.zero))
-            yield s0
-            for term in (self.tail * (s0 + S).reciprocal()):
-                yield term
-        S = PowerSeries(_s)
-        return S
     
 def nthpower(n, coeff=1):
     """A series giving the nth power of x.
