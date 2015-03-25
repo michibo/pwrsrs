@@ -328,16 +328,12 @@ class PowerSeries(object):
         @MemoizedGenerator
         def _g():
             for n in count():
-                def _f():
+                @MemoizedGenerator
+                def _f(n=n):
                     for term in self:
-                        if isinstance(term, PowerSeries):
-                            for e in islice(term, n, None):
-                                yield e
-                                break
-                        elif n == 0:
-                            yield term
-                        else:
-                            yield 0
+                        for e in islice(term, n, None):
+                            yield e
+                            break
 
                 yield PowerSeries(_f).shuffle(k-1)
         
@@ -353,13 +349,7 @@ class PowerSeries(object):
                 
         return PowerSeries(_g)
 
-
     def solve( self ):
-        # Solve f(g,X,...) = g
-        # g = f0(X,...) + g * F(g,X,...)
-        # Solve for g plugged into the active variable f(g(X,...),X,...) = 0
-        # f0(X,...) + f1(X,...) g(X) + FF(g(X,...),X,...) g(X,...)^2 = 0
-        # => g(X,...) = 1/f1(X,...) * (-f0(X,...) - FF(g(X,...),X,...) g(X,...)^2)
         g0 = self.zero
         if not isinstance(g0, PowerSeries):
             if g0 == 0:
@@ -367,27 +357,13 @@ class PowerSeries(object):
             else:
                 raise ValueError
             
-#        @MemoizedGenerator
-##        def _i():
-#            G = self.tail
-#            
-#            c0 = (g0.zero/(1 - G.shuffle(1).zero)).solve()
-#
-#            for term in (self.shuffle(1).derivative().shuffle(1)(I)/(1-self.derivative()(I))).integral(c0):
-#                yield term
-#
-#
-#        I = PowerSeries(_i)
-#        return I
-
         @MemoizedGenerator
         def _i():
             G = self.tail
             
-            yield (g0.zero/(1 - G.shuffle(1).zero)).solve()
+            c0 = (g0.zero/(1 - G.shuffle(1).zero)).solve()
 
-            R = g0 / (1 - G(I))
-            for term in R.tail:
+            for term in (self.shuffle(1).derivative().shuffle(1) / (1-self.derivative()))(I).integral(c0):
                 yield term
 
         I = PowerSeries(_i)
@@ -568,27 +544,11 @@ class PowerSeries(object):
 
         @MemoizedGenerator
         def _c():
-            g0 = self.zero
-            G = self.tail
+            c0 = self.shuffle(1).zero(other.zero)
+            F = other.tail
 
-            c0 = g0.zero + other.zero * G.shuffle(1).zero(other.zero)
-
-            R = other.derivative()*(self.derivative()(other)) + self.shuffle(1).derivative().shuffle(1)(other)
-            for term in (R).integral(c0):
-                yield term
-
-        return PowerSeries(_c)
-
-        @MemoizedGenerator
-        def _c():
-            g0 = self.zero
-            G = self.tail
-
-            R0 = g0.zero + other.zero * G.shuffle(1).zero(other.zero)
-            yield R0
-            R1 = g0 + other * G(other)
-
-            for term in R1.tail:
+            R = (self.derivative().smul(F.derivative().xmul + F) + self.shuffle(1).derivative().shuffle(1))(other)
+            for term in R.integral(c0):
                 yield term
 
         return PowerSeries(_c)
@@ -708,9 +668,17 @@ class PowerSeries(object):
         Note that we can't exponentiate a series with a nonzero first term by this
         method.
         """
+        if isinstance(self.zero, PowerSeries):
+            c0 = self.zero.exponential()
+        else:
+            if self.zero != 0:
+                raise ValueError
+            else:
+                c0 = 1
+
         @MemoizedGenerator
         def _e():
-            for term in (E * self.derivative()).integral(1):
+            for term in (E * self.derivative()).integral(c0):
                 yield term
 
         E = PowerSeries(_e)

@@ -4,6 +4,7 @@ from powerseries import X,Y,Z,I
 from operator import mul
 from math import factorial
 from fractions import Fraction as F
+import pdb
 
 def f_binomial( n, k ):
     if k < 0:
@@ -71,23 +72,6 @@ def test_compose():
             print k, "2. TEST PASSED"
         else:
             print k, "2. TEST FAILED"
-
-def test_solve():
-    T = Y * X.exponential()
-    R = T.solve()
-
-    def f_caylay(n):
-        if n == 0:
-            return 0
-        return F((n)**(n-1), factorial(n))
-
-    print ps(f=f_caylay)
-    print R
-    if R == ps(f=f_caylay):
-        print "1. TEST PASSED"
-    else:
-        print "1. TEST FAILED"
-
 def test_exp():
     A = (X.exponential()).logarithm()
     if A == X:
@@ -131,13 +115,32 @@ def test_shuffle():
     else:
         print "1. FAILED"
 
+def test_solve():
+    
+    A = X + Y.exponential()-1 + Z
+    T = Y * X.exponential()
+    R = T.solve()
+
+    def f_caylay(n):
+        if n == 0:
+            return 0
+        return F((n)**(n-1), factorial(n))
+
+    print ps(f=f_caylay)
+    print R
+    if R == ps(f=f_caylay):
+        print "1. TEST PASSED"
+    else:
+        print "1. TEST FAILED"
+
+
 def main():
+    test_solve()
     test_shuffle()
     test_binomial()
     test_compose()
     test_exp()
     test_pow()
-    test_solve()
 
 if __name__ == "__main__":
     main()

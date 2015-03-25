@@ -83,6 +83,7 @@ Typical usage and comparison with non-memoized generators:
 """
 
 from itertools import count
+from collections import deque
 
 
 class MemoizedGenerator(object):
@@ -118,7 +119,7 @@ class MemoizedGenerator(object):
         # The underlying generator
         self.__gen = gen
         # Memoization fields
-        self.__cache = []
+        self.__cache = deque()
         self.__iter = None
         self.__empty = False
     
