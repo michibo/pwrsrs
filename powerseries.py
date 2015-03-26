@@ -156,7 +156,7 @@ class PowerSeries(object):
     to speed computations.
     """
     
-    testlimit = 20
+    testlimit = 10
     
     def __init__(self, g=None, f=None, l=None, dim=1):
         """Construct a PowerSeries from a generator, term function, or list.
@@ -233,14 +233,6 @@ class PowerSeries(object):
     # compare equal to have the same hash values, and there's no easy way to do that
     
     __hash__ = None
-    
-    def showterms(self, num=None):
-        """Convenience method to print the first ``num`` terms.
-        
-        If ``num`` is not given, it defaults to ``self.testlimit``.
-        """
-        for term in islice(self, num or self.testlimit):
-            print term
 
     def getstr(self, num=None):
         def gen_str():
@@ -269,18 +261,6 @@ class PowerSeries(object):
             return term
     
     @property
-    def head(self):
-        """Return a PowerSeries representing the "head" of this one.
-        
-        The "head" of a power series is the zeroth element only, viewed as a
-        series in its own right (meaning, the first and all later elements
-        are zero).
-        """
-        def _h():
-            yield self.zero
-        return PowerSeries(_h)
-    
-    @property
     def tail(self):
         """Return a PowerSeries representing the "tail" of this one.
         
@@ -295,33 +275,27 @@ class PowerSeries(object):
                 yield term
         return PowerSeries(_t)
     
-    @property
-    def xmul(self):
-        """Return a PowerSeries representing x * this one.
-        
-        This is a sort of "inverse" operation to the tail function above;
-        the "tail" operation more or less corresponds to dividing the series
-        by x. We can test this by testing the identity:
-        
-        >>> e = expseries()
-        >>> e == e.xmul.tail
-        True
-        
-        However, the "division by x" is not complete, because the tail
-        leaves out the zeroth term of the original series (see the docstring
-        for the ``tail`` method above). So to invert the above test, we have
-        to add back the head, giving the identity:
-        
-        >>> e == e.head + e.tail.xmul
-        True
-        """
-        def _x():
-            yield 0
-            for term in self:
-                yield term
-        return PowerSeries(_x)
-
     def shuffle( self, k ):
+        if k == 0:
+            return self
+
+        def _flip():
+            def _f0():
+                for term in self:
+                    yield term.zero
+
+            yield PowerSeries(_f0).shuffle(k-1)
+
+            def _f():
+                for term in self:
+                    yield term.tail
+
+            for term in PowerSeries(_f).shuffle(k):
+                yield term
+
+        return PowerSeries(_flip)
+
+    def flip( self, k ):
         if k == 0:
             return self
         
@@ -441,11 +415,18 @@ class PowerSeries(object):
                 F = self.tail
                 G = other.tail
 
-                mterms = [(F * G).xmul]
+                r1 = 0
+                mterms = [F * G]
                 if isinstance(f0, PowerSeries) or f0 != 0:
-                    mterms.append(G.smul(f0))
+                    f0G = G.smul(f0)
+                    r1 += f0G.zero
+                    mterms.append(f0G.tail)
                 if isinstance(g0, PowerSeries) or g0 != 0:
-                    mterms.append(F.smul(g0))
+                    g0F = F.smul(g0)
+                    r1 += g0F.zero
+                    mterms.append(g0F.tail)
+                
+                yield r1
 
                 for terms in izip(*mterms):
                     yield sum(terms)
@@ -484,18 +465,42 @@ class PowerSeries(object):
         True
         """
         if not isinstance(other, PowerSeries):
-            return self * (1 / other)
+            return self * (F(1,1) / other)
         else:
-            return self * other.reciprocal()
+            return self * (1 / other)
     
     def __rdiv__(self, other):
-        """Easier way of accessing the reciprocal of self.
+        """Return a PowerSeries representing the reciprocal of self.
+        
+        Note that the same trick we used in the exponential above also works here; R
+        appears in its own generator, but the generator yields a constant first, so
+        there is no infinite regress.
+        
+        The reciprocal obeys the obvious identity F * 1/F = 1:
         
         >>> e = expseries()
-        >>> e * (F(1, 1) / e) == nthpower(0)
+        >>> e * e.reciprocal() == nthpower(0)
         True
+        
+        We can also express the fact that 1/e^x = e^-x:
+        
+        >>> expseries().reciprocal() == (F(-1, 1) * nthpower(1)).exponential()
+        True
+        
+        Note that we can't take the reciprocal of a series with a zero first term
+        by this method.
         """
-        return other * self.reciprocal()
+        if isinstance(other, PowerSeries):
+            return other * (1/self)
+
+        @MemoizedGenerator
+        def _r():
+            recip = F(1, self.zero) if isinstance(self.zero, int) else 1/self.zero
+            yield recip
+            for term in ( (self.tail * R).smul(- recip)):
+                yield term
+        R = PowerSeries(_r)
+        return R
     
     def compose(self, other):
         # With self = g and other = f
@@ -658,36 +663,6 @@ class PowerSeries(object):
 
         return PowerSeries(_i)
        
-    def reciprocal(self):
-        """Return a PowerSeries representing the reciprocal of self.
-        
-        Note that the same trick we used in the exponential above also works here; R
-        appears in its own generator, but the generator yields a constant first, so
-        there is no infinite regress.
-        
-        The reciprocal obeys the obvious identity F * 1/F = 1:
-        
-        >>> e = expseries()
-        >>> e * e.reciprocal() == nthpower(0)
-        True
-        
-        We can also express the fact that 1/e^x = e^-x:
-        
-        >>> expseries().reciprocal() == (F(-1, 1) * nthpower(1)).exponential()
-        True
-        
-        Note that we can't take the reciprocal of a series with a zero first term
-        by this method.
-        """
-        @MemoizedGenerator
-        def _r():
-            recip = F(1, self.zero) if isinstance(self.zero, int) else 1/self.zero
-            yield recip
-            for term in ( (self.tail * R).smul(- recip)):
-                yield term
-        R = PowerSeries(_r)
-        return R
-
     def __pow__( self, alpha ):
         if not isinstance(self.zero, PowerSeries) and self.zero == 0:
             raise ValueError

@@ -40,9 +40,9 @@ def test_binomial():
 
     C = ps(f=f_fibonacci)
 
-    A = A(X).xmul
+    A = A(X)
 
-    if A == C:
+    if A == C.tail:
         print "2. TEST PASSED"
     else:
         print "2. TEST FAILED"
@@ -153,9 +153,9 @@ def test_solve():
 
 
 def main():
+    test_shuffle()
     test_inverse()
     test_solve()
-    test_shuffle()
     test_binomial()
     test_compose()
     test_exp()
