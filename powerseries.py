@@ -156,7 +156,7 @@ class PowerSeries(object):
     to speed computations.
     """
     
-    testlimit = 10
+    testlimit = 7
     
     def __init__(self, g=None, f=None, l=None, dim=1):
         """Construct a PowerSeries from a generator, term function, or list.
@@ -259,6 +259,16 @@ class PowerSeries(object):
         """
         for term in self:
             return term
+
+    @property
+    def xmul(self):
+
+        def _xmul():
+            yield 0
+            for term in self:
+                yield term
+
+        return PowerSeries(_xmul)
     
     @property
     def tail(self):
@@ -279,7 +289,7 @@ class PowerSeries(object):
         if k == 0:
             return self
 
-        def _flip():
+        def _shuffle():
             def _f0():
                 for term in self:
                     yield term.zero
@@ -293,25 +303,11 @@ class PowerSeries(object):
             for term in PowerSeries(_f).shuffle(k):
                 yield term
 
-        return PowerSeries(_flip)
+        return PowerSeries(_shuffle)
 
-    def flip( self, k ):
-        if k == 0:
-            return self
-        
-        @MemoizedGenerator
-        def _g():
-            for n in count():
-                @MemoizedGenerator
-                def _f(n=n):
-                    for term in self:
-                        for e in islice(term, n, None):
-                            yield e
-                            break
-
-                yield PowerSeries(_f).shuffle(k-1)
-        
-        return PowerSeries(_g)
+    @property
+    def flip( self ):
+        return self.shuffle(1)
 
     def __add__(self, other):
         """Return a PowerSeries instance that sums self and other.
@@ -502,7 +498,7 @@ class PowerSeries(object):
         R = PowerSeries(_r)
         return R
     
-    def compose(self, other):
+    def general_compose(self, other):
         # With self = g and other = f
         # Calculates g(f(x,...),x,...)
         
@@ -522,19 +518,19 @@ class PowerSeries(object):
 
         @MemoizedGenerator
         def _c():
-            S = self.shuffle(1)
-            c0 = S.zero(other.zero)
-            R = (self.derivative().smul(other.derivative()) + S.derivative().shuffle(1))(other)
+            S = self.flip
+            c0 = S.zero.general_compose(other.zero)
+            R = (self.derivative().smul(other.derivative()) + S.derivative().flip).general_compose(other)
             for term in R.integral(c0):
                 yield term
 
         return PowerSeries(_c)
     
-    def compose2(self, other):
+    def compose(self, other):
         # With self = g and other = f
         # Calculates g(f(x,y,...),y,...)
         # Note that this is a special case of compose
-        # I.tensor(A.shuffle(1)).shuffle(1).compose(B) == A.compose2(B)
+        # tens(I, A.flip).flip.general_compose(B) == A.compose(B)
 
         """Return a PowerSeries instance that composes self with other.
         
@@ -549,9 +545,9 @@ class PowerSeries(object):
 
         @MemoizedGenerator
         def _c():
-            c0 = self(other.zero)
+            c0 = self.general_compose(other.zero)
 
-            R = (self.derivative().compose2(other) * other.derivative()).integral(c0)
+            R = (self.derivative().compose(other) * other.derivative()).integral(c0)
             
             for term in R:
                 yield term
@@ -571,22 +567,22 @@ class PowerSeries(object):
                 raise ValueError
             
         @MemoizedGenerator
-        def _i():
-            G = self.shuffle(1)
+        def _solve():
+            G = self.flip
             c0 = G.zero.solve()
 
-            for term in (G.derivative().shuffle(1) / (1-self.derivative()))(I).integral(c0):
+            for term in (G.derivative().flip / (1-self.derivative())).general_compose(SOL).integral(c0):
                 yield term
 
-        I = PowerSeries(_i)
-        return I
+        SOL = PowerSeries(_solve)
+        return SOL
 
     def inverse(self):
         # With self = g
         # Calculates f(x,...)
         # Satisfying x = g(f(x,...),y,...)
         # Note that this is a special case of solve
-        # (I.tensor(A.shuffle(1)).shuffle(1) + X - Y).solve() == A.inverse()
+        # (tens(I, A.flip).flip + X - Y).solve() == A.inverse()
 
         """Return a PowerSeries representing the inverse of self.
         
@@ -610,20 +606,20 @@ class PowerSeries(object):
         def _i():
             c0 = (self+X).solve()
 
-            R = (1/self.derivative().compose2( I )).integral(c0)
+            R = (1/self.derivative().compose( INV )).integral(c0)
             
             for term in R:
                 yield term
 
-        I = PowerSeries(_i)
-        return I
+        INV = PowerSeries(_i)
+        return INV
 
     def __call__(self, other):
         """Alternate, easier notation for ``self.compose(other)``.
         """
         return self.compose(other)
     
-    def derivative(self):
+    def derivative(self, n=1):
         """Return a PowerSeries representing the derivative of this one with respect to x.
         
         Check differentiation of simple powers of x:
@@ -631,6 +627,10 @@ class PowerSeries(object):
         >>> all(nthpower(n).derivative() == n * nthpower(n - 1) for n in xrange(1,10))
         True
         """
+
+        if n > 1:
+            return self.derivative(n-1).derivative()
+
         @MemoizedGenerator
         def _d():
             for n, term in enumerate(self.tail):
@@ -787,6 +787,9 @@ Z = I.tensor( Y )
 
 # Some convenience functions for PowerSeries
 
+def tens(S1, S2):
+    return S1.tensor(S2)
+
 def exp(S):
     """Convenience function for exponentiating PowerSeries.
     
@@ -811,18 +814,6 @@ def log(S):
     return _log(S)
 
 
-def sqrt(S):
-    """Convenience function for taking square roots of PowerSeries.
-    
-    This can also replace the ``math.sqrt`` function, extending it to
-    take a PowerSeries as an argument.
-    """
-    from math import sqrt as _sqrt
-    if isinstance(S, PowerSeries):
-        return S.squareroot()
-    return _sqrt(S)
-
-
 def inv(S):
     """Convenience function for inverting PowerSeries.
     """
@@ -831,11 +822,11 @@ def inv(S):
     raise TypeError("Cannot invert object of type %s." % type(S))
 
 
-def deriv(S):
+def deriv(S, n=1):
     """Convenience function for differentiating PowerSeries.
     """
     if isinstance(S, PowerSeries):
-        return S.derivative()
+        return S.derivative(n)
     raise TypeError("Cannot differentiate object of type %s." % type(S))
 
 

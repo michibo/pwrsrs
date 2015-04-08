@@ -1,6 +1,6 @@
 
 from powerseries import PowerSeries as ps
-from powerseries import X,Y,Z,I
+from powerseries import X,Y,Z,I,tanseries,sinseries,tens
 from operator import mul
 from math import factorial
 from fractions import Fraction as F
@@ -40,7 +40,7 @@ def test_binomial():
 
     C = ps(f=f_fibonacci)
 
-    A = A(X)
+    A = A.general_compose(X)
 
     if A == C.tail:
         print "2. TEST PASSED"
@@ -153,6 +153,9 @@ def test_solve():
 
 
 def main():
+    Inv = tanseries().inverse()
+    print tanseries()(Inv)
+    print tanseries().inverse().derivative() - 1/(1+X*X)
     test_shuffle()
     test_inverse()
     test_solve()
