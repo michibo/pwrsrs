@@ -237,7 +237,7 @@ class PowerSeries(object):
     def getstr(self, num=None):
         def gen_str():
             is_pps = any( isinstance(term, PowerSeries) for term in islice(self, num or self.testlimit ) )
-            for term in islice(self, num or self.testlimit):
+            for term in islice(self, num if num else self.testlimit):
                 yield str(term) + ( ", " if not is_pps else "\n" )
 
         return "".join(gen_str()) + "..."
@@ -284,6 +284,16 @@ class PowerSeries(object):
             for term in islice(self, 1, None):
                 yield term
         return PowerSeries(_t)
+
+    def apply_to( self, n, func ):
+        if n == 0:
+            return func(self)
+
+        def _g():
+            for term in self:
+                yield term.apply_to( n-1, func )
+
+        return PowerSeries(_g)
     
     def shuffle( self, k ):
         if k == 0:
@@ -292,13 +302,19 @@ class PowerSeries(object):
         def _shuffle():
             def _f0():
                 for term in self:
-                    yield term.zero
+                    if isinstance(term, PowerSeries):
+                        yield term.zero
+                    else:
+                        yield term
 
             yield PowerSeries(_f0).shuffle(k-1)
 
             def _f():
                 for term in self:
-                    yield term.tail
+                    if isinstance(term, PowerSeries):
+                        yield term.tail
+                    else:
+                        yield PowerSeries()
 
             for term in PowerSeries(_f).shuffle(k):
                 yield term
@@ -821,6 +837,8 @@ def inv(S):
         return S.inverse()
     raise TypeError("Cannot invert object of type %s." % type(S))
 
+def get_zero( S ):
+    return S.zero
 
 def deriv(S, n=1):
     """Convenience function for differentiating PowerSeries.

@@ -154,8 +154,6 @@ def test_solve():
 
 def main():
     Inv = tanseries().inverse()
-    print tanseries()(Inv)
-    print tanseries().inverse().derivative() - 1/(1+X*X)
     test_shuffle()
     test_inverse()
     test_solve()
