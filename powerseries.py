@@ -139,6 +139,10 @@ from math import factorial
 
 from MemoizedGenerator import MemoizedGenerator
 
+def repeated(func, n):
+    def ret(x):
+        return reduce( lambda x,func: func(x) , repeat(func, n), x )
+    return ret
 
 class PowerSeries(object):
     """Power series encapsulation.
@@ -156,7 +160,7 @@ class PowerSeries(object):
     to speed computations.
     """
     
-    testlimit = 7
+    testlimit = 4
     
     def __init__(self, g=None, f=None, l=None, dim=1):
         """Construct a PowerSeries from a generator, term function, or list.
@@ -541,7 +545,40 @@ class PowerSeries(object):
                 yield term
 
         return PowerSeries(_c)
-    
+
+    def super_compose(self, *args):
+        # With self = g 
+        # and args = [ f1, f2, f3 ] 
+        # calculates g(f1(x,...), f2(x,...), f3(x,...),...)
+
+        g = self
+        args = list(args)
+
+        for n,a in reversed(list(enumerate(args))):
+            if not isinstance(a, PowerSeries):
+                if a == 0:
+                    g = g.apply_to( n, get_zero )
+                    del args[n]
+                else:
+                    raise ValueError
+
+        if len(args) == 0:
+            return g
+
+        @MemoizedGenerator
+        def _super_compose():
+            c0 = g.super_compose( *[ a.zero for a in args ] )
+
+            grad = [ g.apply_to(n, deriv) for n in range(len(args)) ]
+            Fs = [ a.derivative() for a in args ]
+
+            res = [ gf.super_compose(*args) * fx for gf,fx in izip(grad, Fs) ]
+
+            for term in sum(res).integral(c0):
+                yield term
+
+        return PowerSeries(_super_compose)
+
     def compose(self, other):
         # With self = g and other = f
         # Calculates g(f(x,y,...),y,...)
@@ -839,6 +876,39 @@ def inv(S):
 
 def get_zero( S ):
     return S.zero
+
+def get_tail( S ):
+    return S.tail
+
+def lin_solve( M, B ):
+    for n,e in enumerate(M):
+        inv = 1/e[n]
+        s = [ u*inv for u in e ]
+        for m,d in enumerate(M):
+            if m == n:
+                continue
+
+            M[m] = [ t - r*d[n] for t,r in izip(d, s) ]
+            B[m] = B[m] - inv*B[n]
+
+    return B
+    
+def super_solve( *args ):
+    n = len(args)
+    get_n_zero = repeated( get_zero, n )
+
+    if any( not isinstance(get_n_zero(a), PowerSeries) for a in args ):
+        if all( get_n_zero(a) == 0 for a in args ):
+            return (0)*n
+        else:
+            raise ValueError
+
+    mat = [ [ a.apply_to( m, deriv ) for m in xrange(n) ] for a in args ]
+    B = [ a.apply_to( n, deriv ) for a in args ]
+
+    x = lin_solve(mat, B)
+
+    
 
 def deriv(S, n=1):
     """Convenience function for differentiating PowerSeries.

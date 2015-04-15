@@ -153,6 +153,20 @@ def test_solve():
 
 
 def main():
+    
+    S = X*Y + Y + Z 
+    S2 = (X*X*Y+Z*Z)*(X) + X +  Z
+    print "S\n", S
+    print "S2\n", S2
+
+    S3 = S.super_compose( X*X*Y+Z*Z, X,Z )
+    print "S3\n", S3
+    print S3 == S2
+
+
+
+    return 
+
     Inv = tanseries().inverse()
     test_shuffle()
     test_inverse()
