@@ -181,7 +181,7 @@ class PowerSeries(object):
             return self * F(1, entry)
 
     def __call__( self, *args ):
-        
+        pass
 
 def is_powerseries( entry ):
     return isinstance(entry, PowerSeries)
