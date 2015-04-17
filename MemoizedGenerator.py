@@ -83,6 +83,7 @@ Typical usage and comparison with non-memoized generators:
 """
 
 from itertools import count
+from functools import update_wrapper
 
 
 class MemoizedGenerator(object):
@@ -150,7 +151,6 @@ class MemoizedGenerator(object):
                 else:
                     self.__cache.append(term)
                     yield term
-
 
 if __name__ == '__main__':
     import doctest
