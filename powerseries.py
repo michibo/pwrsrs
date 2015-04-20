@@ -1,6 +1,6 @@
 
 from fractions import Fraction as F
-from itertools import count, islice, izip, chain, repeat
+from itertools import count, islice, izip, chain, repeat, imap
 from functools import partial
 from math import floor
 
@@ -249,9 +249,11 @@ class PowerSeries(object):
         >>> (1/(1-X-X*Y))(Y,X) == 1/(1-Y-Y*X)
         True
 
-        >>> (1/(1-X-Z))(X,Y,X*Y) == 1/(1-X-X*Y)
+        >>> (1/(1-X-X*Y))(Y) == 1/(1-Y-Y*X)
         True
 
+        >>> (1/(1-X-Z))(X,Y,X*Y) == 1/(1-X-X*Y)
+        True
 
         >>> (1/(1-X))(Y) == 1/(1-Y)
         True
@@ -278,11 +280,11 @@ class PowerSeries(object):
         def _compose():
             c0 = self.deep_apply(get_zero, n)( *map( get_zero, args ) )
 
-            G = ( self.deep_apply( D, k ) for k in xrange(len(args)) )
-            F = map( D, args )
+            G = ( self.deep_apply( D, k ) for k in xrange(n) )
+            F = imap( D, args )
 
-            r = sum( g(*args) * f for g,f in izip(G, F) ) + self.deep_apply( D, n )(*args)
-            for term in integral(r, c0):
+            r = sum( g.deep_apply(lambda x, f=f: f*x, n) for g,f in izip(G, F) ) + self.deep_apply( D, n )
+            for term in integral(r(*args), c0):
                 yield term
 
         return PowerSeries(_compose)
