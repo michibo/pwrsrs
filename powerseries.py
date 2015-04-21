@@ -1,7 +1,6 @@
 
 from fractions import Fraction as F
 from itertools import count, islice, izip, chain, repeat, imap
-from functools import partial
 from math import floor
 
 from MemoizedGenerator import MemoizedGenerator
@@ -64,6 +63,36 @@ class PowerSeries(object):
                     yield term.deep_map( func )
     
         return PowerSeries(_deep_map)
+    
+    def shuffle( self, k ):
+        if k == 0:
+            return self
+
+        def _shuffle():
+            def _f0():
+                for term in self:
+                    if isinstance(term, PowerSeries):
+                        yield term.zero
+                    else:
+                        yield term
+
+            yield PowerSeries(_f0).shuffle(k-1)
+
+            def _f():
+                for term in self:
+                    if isinstance(term, PowerSeries):
+                        yield term.tail
+                    else:
+                        yield PowerSeries()
+
+            for term in PowerSeries(_f).shuffle(k):
+                yield term
+
+        return PowerSeries(_shuffle)
+
+    @property
+    def flip( self ):
+        return self.shuffle(1)
 
     def get_tail( self ):
         @MemoizedGenerator
@@ -302,9 +331,14 @@ def get_zero( d ):
     else:
         return d
 
-def D( f ):
+def D( f, n=1 ):
+
+    if n > 1:
+        return repeated(D, n)(f)
+
     if not is_powerseries(f):
         return 0
+
     @MemoizedGenerator
     def _D():
         for n,term in enumerate(f.tail):
@@ -380,6 +414,7 @@ def solve( *args ):
     dfs = linsolve( m, b )
 
     def make_solver( df, c0 ):
+        @MemoizedGenerator
         def _solve():
             for term in integral( df(*SOL), c0 ):
                 yield term
