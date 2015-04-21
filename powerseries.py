@@ -235,27 +235,27 @@ class PowerSeries(object):
         P = PowerSeries(_pow)
         return P
 
-    def __call__( self, *args ):
+    def compose(self, *args):
         """
 
-        >>> (1/(1-X-X*Y))(X,X) == 1/(1-X-X**2)
+        >>> (1/(1-X-X*Y)).compose(X,X) == 1/(1-X-X**2)
         True
 
         >>> A = exp(X)
         >>> B = log(1/(1-X)) 
-        >>> A(B) == 1/(1-X)
+        >>> A.compose(B) == 1/(1-X)
         True
 
-        >>> (1/(1-X-X*Y))(Y,X) == 1/(1-Y-Y*X)
+        >>> (1/(1-X-X*Y)).compose(Y,X) == 1/(1-Y-Y*X)
         True
 
-        >>> (1/(1-X-X*Y))(Y) == 1/(1-Y-Y*X)
+        >>> (1/(1-X-X*Y)).compose(Y) == 1/(1-Y-Y*X)
         True
 
-        >>> (1/(1-X-Z))(X,Y,X*Y) == 1/(1-X-X*Y)
+        >>> (1/(1-X-Z)).compose(X,Y,X*Y) == 1/(1-X-X*Y)
         True
 
-        >>> (1/(1-X))(Y) == 1/(1-Y)
+        >>> (1/(1-X)).compose(Y) == 1/(1-Y)
         True
 
         """
@@ -284,10 +284,13 @@ class PowerSeries(object):
             F = imap( D, args )
 
             r = sum( g.deep_apply(lambda x, f=f: f*x, n) for g,f in izip(G, F) ) + self.deep_apply( D, n )
-            for term in integral(r(*args), c0):
+            for term in integral(r.compose(*args), c0):
                 yield term
 
         return PowerSeries(_compose)
+
+    def __call__( self, *args ):
+        return self.compose(*args)
 
 def is_powerseries( entry ):
     return isinstance(entry, PowerSeries)
@@ -310,74 +313,81 @@ def D( f ):
     return PowerSeries(_D)
 
 def linsolve( M, B ): 
-    for n,b in enumerate(B):
-        print "b"
-        print b
-    for n,e in enumerate(M):
-        inv = 1/e[n]
-        s = [ u*inv for u in e ]
-        for m,d in enumerate(M):
-            if m == n:
+    """
+    >>> W = [ [ exp(X+2*Y), log(1+Y) ], [ X**2 - exp(Y*(exp(X)-1)), 1/(1-X*Y-X) ]  ]
+    >>> B = [  X + Y*3 ,  1/(1-X*Y) ]
+    >>> W2 = W[:]
+    >>> B2 = B[:]
+
+    >>> R = linsolve( W, B )
+    >>> R[0]*W2[0][0] + R[1]*W2[0][1] - B2[0] == tensor(ZERO, ZERO)
+    True
+
+    >>> R[0]*W2[1][0] + R[1]*W2[1][1] - B2[1] == tensor(ZERO, ZERO)
+    True
+
+    """
+    n = len(M)
+    for i in range(n):
+        inv = 1/M[i][i]
+        M[i] = [ u*inv for u in M[i] ]
+        B[i] = inv*B[i]
+
+        for j in range(n):
+            if i == j:
                 continue
 
-            M[m] = [ t - r*d[n] for t,r in izip(d, s) ]
-            B[m] = B[m] - inv*B[n]
-
-    for n,e in enumerate(M):
-        for m, r in enumerate(e):
-            print "n, m", n, m
-            print r
-
-    for n,b in enumerate(B):
-        print "b"
-        print b
+            d = M[j][i]
+            B[j] = B[j] - B[i]*d
+            M[j] = [ t - r*d for t,r in zip(M[j], M[i]) ]
 
     return B
 
 def solve( *args ):
     """
         
+    >>> solve( Y-1 + exp(X))[0] == log(1-X)
+    True
+
+    >>> T = [ log(1+X) + exp(Y)-1 + Z, 1/(1-X-X*Y) - 1 + Z ]
+    >>> all( t.compose( solve(t)[0] ) == tensor(ZERO, ZERO) for t in T )
+    True
+
+    >>> W = [ X + Y + 2*Z + Y*Y - Y*Y*Y, X + Z +X*X ]
+    >>> R = solve(*W)
+
+    >>> W[0](*R) == ZERO
+    True
+    >>> W[1](*R) == ZERO
+    True
 
     """
     n = len(args)
 
     get_n_zero = repeated( get_zero, n )
 
-    print "START"
-    for a in args:
-        print a
-    print "START ENDE"
-
     if any( not is_powerseries(get_n_zero(a)) for a in args ):
         if all( get_n_zero(a) == 0 for a in args ):
-            return (PowerSeries(),)*n
+            return (0,)*n
         else:
             raise ValueError("No solution")
     
     c0s = solve( *[ a.deep_apply( get_zero, n ) for a in args ] )
-    print "REC RES: "
-    for c in c0s:
-        print c
 
-    m = [ [ a.deep_apply( D, k ) for k in xrange(n) ] for a in args ]
-    b = [   -a.deep_apply( D, n ) for a in args ]
-    
+    m = [ [ a.deep_apply( D, k ) for k in xrange(n) ] for a in args  ]
+    b = [  -a.deep_apply( D, n ) for a in args ]
+
     dfs = linsolve( m, b )
-    print "DFS"
-    for df in dfs:
-        print df
-        print df(-Y)
-    print "DFS ENDE"
 
-    SOL = []
-    for i in xrange(n):
-        def _solve(i=i):
-            for term in integral( dfs[i](*SOL), c0s[i] ):
+    def make_solver( df, c0 ):
+        def _solve():
+            for term in integral( df(*SOL), c0 ):
                 yield term
+        return PowerSeries(_solve)
 
-        SOL.append(PowerSeries(_solve))
+    SOL = tuple( make_solver( df, c0 ) for df, c0 in zip(dfs, c0s) )
 
-    return tuple(SOL)
+    return SOL
 
 def integral( f, const=0 ):
     @MemoizedGenerator
@@ -388,8 +398,15 @@ def integral( f, const=0 ):
 
     return PowerSeries(_int)
 
-def tensor( f1, f2 ):
-    return f1.deep_map( lambda x: f2*x )
+def tensor( *args ):
+    if len(args) == 1:
+        return args[0]
+    elif len(args) > 2:
+        return tensor( args[0], tensor( *args[1:] ) )
+    elif len(args) == 2:
+        return args[0].deep_map( lambda x: args[1]*x )
+    else:
+        return 0
 
 def exp( f ):
     """
@@ -447,7 +464,8 @@ def log( f ):
 
     return PowerSeries(_log)
 
-I = 1 + PowerSeries()
+ZERO = PowerSeries()
+I = 1 + ZERO
 X = I.xmul
 Y = tensor(I, X)
 Z = tensor(I, Y)
