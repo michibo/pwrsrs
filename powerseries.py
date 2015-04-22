@@ -53,22 +53,17 @@ class PowerSeries(object):
 
         return PowerSeries( _deep_apply )
 
-    def deep_map( self, func ):
-        @MemoizedGenerator
-        def _deep_map():
-            for term in self:
-                if not isinstance(term, PowerSeries):
-                    yield func(term)
-                else:
-                    yield term.deep_map( func )
-    
-        return PowerSeries(_deep_map)
-    
-    def shuffle( self, k ):
+    def rotate( self, k ):
+        """
+
+        >>> 2*Z + 3*X + 4*Y == (2*X + 3*Y + 4*Z).rotate(2)
+        True
+
+        """
         if k == 0:
             return self
 
-        def _shuffle():
+        def _rotate():
             def _f0():
                 for term in self:
                     if isinstance(term, PowerSeries):
@@ -76,7 +71,7 @@ class PowerSeries(object):
                     else:
                         yield term
 
-            yield PowerSeries(_f0).shuffle(k-1)
+            yield PowerSeries(_f0).rotate(k-1)
 
             def _f():
                 for term in self:
@@ -85,16 +80,22 @@ class PowerSeries(object):
                     else:
                         yield PowerSeries()
 
-            for term in PowerSeries(_f).shuffle(k):
+            for term in PowerSeries(_f).rotate(k):
                 yield term
 
-        return PowerSeries(_shuffle)
+        return PowerSeries(_rotate)
 
     @property
     def flip( self ):
-        return self.shuffle(1)
+        return self.rotate(1)
 
-    def get_tail( self ):
+    @property
+    def zero(self):
+        for term in self:
+            return term
+
+    @property
+    def tail(self):
         @MemoizedGenerator
         def _tail():
             for term in islice(self, 1, None):
@@ -103,18 +104,10 @@ class PowerSeries(object):
         return PowerSeries(_tail)
 
     @property
-    def zero(self):
-        return get_zero(self)
-
-    @property
-    def tail(self):
-        return self.get_tail()
-
-    @property
     def xmul(self):
         @MemoizedGenerator
         def _xmul():
-            yield 0
+            yield self.zero*0
             for term in self:
                 yield term
 
@@ -197,7 +190,7 @@ class PowerSeries(object):
 
             yield recip
 
-            for term in ( (self.tail * R).deep_apply( lambda x: -x*recip ) ):
+            for term in ( (self.tail * R).deep_apply( lambda x: x*(-recip) ) ):
                 yield term
 
         R = PowerSeries(_rdiv)
@@ -326,13 +319,14 @@ def is_powerseries( entry ):
 
 def get_zero( d ):
     if is_powerseries(d):
-        for term in d:
-            return term
+        return d.zero
     else:
         return d
 
-def D( f, n=1 ):
+def get_tail( d ):
+    return d.tail
 
+def D( f, n=1 ):
     if n > 1:
         return repeated(D, n)(f)
 
@@ -361,6 +355,23 @@ def linsolve( M, B ):
     True
 
     """
+
+    if len(M) == 2:
+        a00 = M[0][0]
+        a01 = M[0][1]
+        a10 = M[1][0]
+        a11 = M[1][1]
+
+        b0 = B[0]
+        b1 = B[1]
+
+        det = a00*a11 - a01*a10
+
+        x0 = (a11*b0 - a01*b1)/det
+        x1 = -(a10*b0 - a00*b1)/det
+
+        return (x0,x1)
+
     n = len(M)
     for i in range(n):
         inv = 1/M[i][i]
@@ -399,7 +410,7 @@ def solve( *args ):
     n = len(args)
 
     get_n_zero = repeated( get_zero, n )
-
+    
     if any( not is_powerseries(get_n_zero(a)) for a in args ):
         if all( get_n_zero(a) == 0 for a in args ):
             return (0,)*n
@@ -411,8 +422,13 @@ def solve( *args ):
     m = [ [ a.deep_apply( D, k ) for k in xrange(n) ] for a in args  ]
     b = [  -a.deep_apply( D, n ) for a in args ]
 
-    dfs = linsolve( m, b )
+#    for r in m:
+#        print "ROW"
+#        for e in r:
+#            print e
 
+    dfs = linsolve( m, b )
+    
     def make_solver( df, c0 ):
         @MemoizedGenerator
         def _solve():
@@ -439,7 +455,12 @@ def tensor( *args ):
     elif len(args) > 2:
         return tensor( args[0], tensor( *args[1:] ) )
     elif len(args) == 2:
-        return args[0].deep_map( lambda x: args[1]*x )
+        f0, f1 = args[0], args[1]
+
+        if not is_powerseries(f0) or not is_powerseries(f1):
+            return f0 * f1
+        else:
+            return f0.deep_apply( lambda x: tensor(x, f1) )
     else:
         return 0
 
