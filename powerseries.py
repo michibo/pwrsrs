@@ -1,9 +1,9 @@
 
 from fractions import Fraction as F
-from itertools import count, islice, izip, chain, repeat, imap
+from itertools import count, islice, izip, repeat, imap
 from math import floor
 
-from MemoizedGenerator import MemoizedGenerator
+from MemoizedGenerator import memoizedGenerator
 
 def repeated(func, n):
     def ret(x):
@@ -11,7 +11,7 @@ def repeated(func, n):
     return ret
 
 class PowerSeries(object):
-    testlimit = 5
+    testlimit = 3
 
     def __init__(self, g=None):
         self.__g = g
@@ -20,7 +20,7 @@ class PowerSeries(object):
         return all(s == e for s,e in islice(izip(self,entry), self.testlimit))
 
     def __iter__( self ):
-        return chain(self.__g(), repeat(0)) if self.__g else repeat(0)
+        return self.__g() if self.__g else repeat(0)
 
     def __str__(self):
         return self.getstr()
@@ -41,12 +41,12 @@ class PowerSeries(object):
             return func(self)
 
         if n == 1:
-            @MemoizedGenerator
+            @memoizedGenerator
             def _deep_apply():
                 for term in self:
                     yield func(term)
         else:
-            @MemoizedGenerator
+            @memoizedGenerator
             def _deep_apply():
                 for term in self:
                     yield term.deep_apply( func, n-1 )
@@ -96,7 +96,7 @@ class PowerSeries(object):
 
     @property
     def tail(self):
-        @MemoizedGenerator
+        @memoizedGenerator
         def _tail():
             for term in islice(self, 1, None):
                 yield term
@@ -105,7 +105,7 @@ class PowerSeries(object):
 
     @property
     def xmul(self):
-        @MemoizedGenerator
+        @memoizedGenerator
         def _xmul():
             yield self.zero*0
             for term in self:
@@ -115,12 +115,12 @@ class PowerSeries(object):
 
     def __add__(self, entry):
         if is_powerseries(entry):
-            @MemoizedGenerator
+            @memoizedGenerator
             def _add():
                 for term1, term2 in izip(self, entry):
                     yield term1 + term2
         else:
-            @MemoizedGenerator
+            @memoizedGenerator
             def _add():
                 it = iter(self)
                 yield next(it) + entry
@@ -138,8 +138,8 @@ class PowerSeries(object):
                 return PowerSeries()
             else:
                 return self.deep_apply( lambda x: x*entry )
-
-        @MemoizedGenerator
+        
+        @memoizedGenerator
         def _mul():
             f0 = self.zero
             g0 = entry.zero
@@ -178,7 +178,7 @@ class PowerSeries(object):
         if is_powerseries(entry):
             return entry * (1/self)
 
-        @MemoizedGenerator
+        @memoizedGenerator
         def _rdiv():
             f0 = self.zero
             if is_powerseries(f0):
@@ -196,8 +196,7 @@ class PowerSeries(object):
         R = PowerSeries(_rdiv)
         return R
 
-    def __radd__(self, entry):
-        return self + entry
+    __radd__ = __add__
 
     def __sub__(self, entry):
         return self + (-entry)
@@ -208,8 +207,7 @@ class PowerSeries(object):
     def __neg__(self):
         return self.deep_apply( lambda x: -x )
 
-    def __rmul__(self, entry):
-        return self * entry
+    __rmul__ = __mul__
 
     def __div__(self, entry):
         if is_powerseries(entry):
@@ -236,7 +234,7 @@ class PowerSeries(object):
         f0 = self.zero
         if not is_powerseries(f0) and f0 == 0:
             if floor(alpha) == alpha:
-                @MemoizedGenerator
+                @memoizedGenerator
                 def _pow():
                     for e in repeat(0, alpha):
                         yield e
@@ -249,7 +247,7 @@ class PowerSeries(object):
 
         c0 = self.zero**alpha if is_powerseries(self.zero) or self.zero != 1 else 1
 
-        @MemoizedGenerator
+        @memoizedGenerator
         def _pow():
             for term in integral(alpha * P * D(self)/ self, c0 ):
                 yield term
@@ -298,7 +296,7 @@ class PowerSeries(object):
         except StopIteration:
             pass
 
-        @MemoizedGenerator
+        @memoizedGenerator
         def _compose():
             c0 = self.deep_apply(get_zero, n)( *map( get_zero, args ) )
 
@@ -317,6 +315,24 @@ class PowerSeries(object):
 def is_powerseries( entry ):
     return isinstance(entry, PowerSeries)
 
+#def sum_powerseries( l ):
+#    """
+#    """
+#    l = list(l)
+#    constants = [ term for term in l if not is_powerseries(term) ]
+#    series = [ term for term in l if is_powerseries(term) ]
+#    if not series:
+#        return sum(constants)
+#
+#    def _sum_ps():
+#        it = izip(*series)
+#        yield sum_powerseries(next(it)) + sum(constants)
+#
+#        for term in it:
+#            yield sum_powerseries(term)
+#
+#    return PowerSeries(_sum_ps)
+
 def get_zero( d ):
     if is_powerseries(d):
         return d.zero
@@ -325,20 +341,6 @@ def get_zero( d ):
 
 def get_tail( d ):
     return d.tail
-
-def D( f, n=1 ):
-    if n > 1:
-        return repeated(D, n)(f)
-
-    if not is_powerseries(f):
-        return 0
-
-    @MemoizedGenerator
-    def _D():
-        for n,term in enumerate(f.tail):
-            yield (n+1) * term
-
-    return PowerSeries(_D)
 
 def linsolve( M, B ): 
     """
@@ -430,7 +432,7 @@ def solve( *args ):
     dfs = linsolve( m, b )
     
     def make_solver( df, c0 ):
-        @MemoizedGenerator
+        @memoizedGenerator
         def _solve():
             for term in integral( df(*SOL), c0 ):
                 yield term
@@ -440,8 +442,22 @@ def solve( *args ):
 
     return SOL
 
+def D( f, n=1 ):
+    if n > 1:
+        return repeated(D, n)(f)
+
+    if not is_powerseries(f):
+        return 0
+
+    @memoizedGenerator
+    def _D():
+        for n,term in enumerate(f.tail):
+            yield (n+1) * term
+
+    return PowerSeries(_D)
+
 def integral( f, const=0 ):
-    @MemoizedGenerator
+    @memoizedGenerator
     def _int():
         yield const
         for n, term in enumerate(f):
@@ -487,7 +503,7 @@ def exp( f ):
     else:
         raise ValueError("Can't take exp of powerseries with non-zero constant term")
 
-    @MemoizedGenerator
+    @memoizedGenerator
     def _exp():
         for term in integral( E * D(f), c0 ):
             yield term
@@ -513,7 +529,7 @@ def log( f ):
     else:
         raise ValueError("Can't take log of powerseries with non-unit constant term")
 
-    @MemoizedGenerator
+    @memoizedGenerator
     def _log():
         for term in integral( D(f)/f, c0 ):
             yield term
