@@ -36,6 +36,19 @@ class PowerSeries(object):
 
         return "".join(gen_str()) + "..."
 
+    def getstrdeep(self, nums=[]):
+        def gen_str():
+            n = nums[0] if nums else self.testlimit
+            r = nums[1:] if nums else []
+            is_pps = any( isinstance(term, PowerSeries) for term in islice(self, n) )
+            for term in islice(self, n):
+                if is_pps:
+                    yield term.getstrdeep(r) + "\n"
+                else:
+                    yield str(term) + ", "
+
+        return "".join(gen_str()) + "..."
+
     def deep_apply( self, func, n=1 ):
         if n == 0:
             return func(self)
