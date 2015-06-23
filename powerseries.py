@@ -1,6 +1,7 @@
 
 from fractions import Fraction as F
 from itertools import count, islice, izip, repeat, imap
+import math
 from math import floor
 
 import matrix
@@ -13,7 +14,7 @@ def repeated(func, n):
     return ret
 
 class PowerSeries(object):
-    testlimit = 3
+    testlimit = 10
 
     def __init__(self, g=None):
         self.__g = g
@@ -200,8 +201,10 @@ class PowerSeries(object):
                 recip = entry / f0
             elif f0 == 1:
                 recip = entry
-            else:
+            elif isinstance(f0, int):
                 recip = F(entry, f0)
+            else: 
+                recip = entry / f0
 
             yield recip
 
@@ -249,6 +252,9 @@ class PowerSeries(object):
         f0 = self.zero
         if not is_powerseries(f0) and f0 == 0:
             if floor(alpha) == alpha:
+                if alpha == 0:
+                    return I
+                    
                 @memoizedGenerator
                 def _pow():
                     for e in repeat(0, alpha):
@@ -497,6 +503,9 @@ def solve( *args ):
     return SOL
 
 def D( f, n=1 ):
+    if n == 0:
+        return f
+
     if n > 1:
         return repeated(D, n)(f)
 
@@ -535,6 +544,9 @@ def tensor( *args ):
         return 0
 
 def exp( f ):
+    if not is_powerseries(f):
+        return math.exp(f)
+
     """
 
     >>> e = exp(X)
@@ -566,6 +578,8 @@ def exp( f ):
     return E
 
 def log( f ):
+    if not is_powerseries(f):
+        return math.log(f)
     """
 
     >>> l = log(1+X) 
