@@ -52,6 +52,9 @@ class PowerSeries(object):
 
         return "".join(gen_str()) + "..."
 
+    def __getitem__(self, key):
+        return next(islice(self, key, None))
+
     def deep_apply( self, func, n=1 ):
         if n == 0:
             return func(self)
@@ -237,6 +240,8 @@ class PowerSeries(object):
 
     def __pow__( self, alpha ):
         """
+        >>> X**0 == I
+        True
 
         >>> X*X == X**2
         True
