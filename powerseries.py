@@ -2,7 +2,10 @@
 
 from fractions import Fraction as F
 from itertools import count, islice, izip, repeat, imap
+import math
 from math import floor
+
+import matrix
 
 from MemoizedGenerator import memoizedGenerator
 
@@ -12,7 +15,7 @@ def repeated(func, n):
     return ret
 
 class PowerSeries(object):
-    testlimit = 3
+    testlimit = 10
 
     def __init__(self, g=None):
         self.__g = g
@@ -199,8 +202,10 @@ class PowerSeries(object):
                 recip = entry / f0
             elif f0 == 1:
                 recip = entry
-            else:
+            elif isinstance(f0, int):
                 recip = F(entry, f0)
+            else: 
+                recip = entry / f0
 
             yield recip
 
@@ -248,6 +253,9 @@ class PowerSeries(object):
         f0 = self.zero
         if not is_powerseries(f0) and f0 == 0:
             if floor(alpha) == alpha:
+                if alpha == 0:
+                    return I
+                    
                 @memoizedGenerator
                 def _pow():
                     for e in repeat(0, alpha):
@@ -356,7 +364,32 @@ def get_zero( d ):
 def get_tail( d ):
     return d.tail
 
-def linsolve( M, B ): 
+#def matmul( M, a ):
+#    """
+#    >>> matmul( [ [0,-1], [-1,0] ], [ [1, 3], [4,2] ] )
+#    """
+#    if all( not is_powerseries(e) for r in M for e in r ) or all( not is_powerseries(e) for e in a ):
+#        return matrix.matmul(M, a)
+#
+#    @memoizedGenerator
+#    def _matmul():
+#        M0 = [ [ e.zero for e in r ] for r in M ]
+#        a0 = [ e.zero for e in a ]
+#        yield matmul( M0, a0 )
+#
+#        Mt = [ [ e.tail for e in r ] for r in M ]
+#        at = [ e.tail for e in a ]
+#
+#        it = izip( matmul(M0, at), matmul(Mt, a0) )
+#        v1,v2 = next(it)
+#        yield [ e1+e2 for e1,e2 in zip(v1,v2) ]
+#
+#        for v1,(v2,v3) for izip(matmul(Mt,at), it):
+#            yield [ e1+e2+e3 for e1,e2,e3 in zip(v1,v2,v3) ]
+#
+#    return PowerSeries(_matmul)
+ 
+def linsolve( M, b ): 
     """
     >>> W = [ [ exp(X+2*Y), log(1+Y) ], [ X**2 - exp(Y*(exp(X)-1)), 1/(1-X*Y-X) ]  ]
     >>> B = [  X + Y*3 ,  1/(1-X*Y) ]
@@ -372,14 +405,33 @@ def linsolve( M, B ):
 
     """
 
+#    if all( not is_powerseries( e for r in M for e in r ) ):
+#        return gauss( M, b )
+#
+#    M0 = [ [ e.zero for e in r ] for r in M ]
+#    b0s = [ e.zero for e in b ]
+#    x0s = linsolve( M0, b0 )
+#
+#    Mt = [ [ e.tail for e in r ] for r in M ]
+#    bts = [ e.tail for e in b ]
+#
+#    def _make_solver(x0, bt):
+#        def _solver():
+#            yield x0
+#
+#            R = 
+#
+#
+#
+#    return
     if len(M) == 2:
         a00 = M[0][0]
         a01 = M[0][1]
         a10 = M[1][0]
         a11 = M[1][1]
 
-        b0 = B[0]
-        b1 = B[1]
+        b0 = b[0]
+        b1 = b[1]
 
         det = a00*a11 - a01*a10
 
@@ -392,17 +444,17 @@ def linsolve( M, B ):
     for i in range(n):
         inv = 1/M[i][i]
         M[i] = [ u*inv for u in M[i] ]
-        B[i] = inv*B[i]
+        b[i] = inv*b[i]
 
         for j in range(n):
             if i == j:
                 continue
 
             d = M[j][i]
-            B[j] = B[j] - B[i]*d
+            b[j] = b[j] - b[i]*d
             M[j] = [ t - r*d for t,r in zip(M[j], M[i]) ]
 
-    return B
+    return b
 
 def solve( *args ):
     """
@@ -438,11 +490,6 @@ def solve( *args ):
     m = [ [ a.deep_apply( D, k ) for k in xrange(n) ] for a in args  ]
     b = [  -a.deep_apply( D, n ) for a in args ]
 
-#    for r in m:
-#        print "ROW"
-#        for e in r:
-#            print e
-
     dfs = linsolve( m, b )
     
     def make_solver( df, c0 ):
@@ -457,6 +504,9 @@ def solve( *args ):
     return SOL
 
 def D( f, n=1 ):
+    if n == 0:
+        return f
+
     if n > 1:
         return repeated(D, n)(f)
 
@@ -495,6 +545,9 @@ def tensor( *args ):
         return 0
 
 def exp( f ):
+    if not is_powerseries(f):
+        return math.exp(f)
+
     """
 
     >>> e = exp(X)
@@ -526,6 +579,8 @@ def exp( f ):
     return E
 
 def log( f ):
+    if not is_powerseries(f):
+        return math.log(f)
     """
 
     >>> l = log(1+X) 
