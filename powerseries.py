@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-
 from fractions import Fraction as F
 from itertools import count, islice, izip, repeat, imap
 import math
