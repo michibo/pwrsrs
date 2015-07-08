@@ -52,6 +52,7 @@ class PowerSeries(object):
 
         return "".join(gen_str()) + "..."
 
+
     def __getitem__(self, key):
         return next(islice(self, key, None))
 
@@ -71,6 +72,15 @@ class PowerSeries(object):
                     yield term.deep_apply( func, n-1 )
 
         return PowerSeries( _deep_apply )
+
+    @property
+    def ps_exp(self):
+        def _g(m=1):
+            for i,term in enumerate(self):
+                yield m*term
+                m = m*(i+1)
+
+        return PowerSeries( _g )
 
     def rotate( self, k ):
         """
