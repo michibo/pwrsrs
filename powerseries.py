@@ -80,166 +80,7 @@ class PowerSeries(object):
         return PowerSeries( _g )
 
     def rotate( self, k ):
-        """
-
-        >>> 2*Z + 3*X + 4*Y == (2*X + 3*Y + 4*Z).rotate(2)
-        True
-
-        """
-        if k == 0:
-            return self
-
-        def _rotate():
-            def _f0():
-                for term in self:
-                    if isinstance(term, PowerSeries):
-                        yield term.zero
-                    else:
-                        yield term
-
-            yield PowerSeries(_f0).rotate(k-1)
-
-            def _f():
-                for term in self:
-                    if isinstance(term, PowerSeries):
-                        yield term.tail
-                    else:
-                        yield PowerSeries()
-
-            for term in PowerSeries(_f).rotate(k):
-                yield term
-
-        return PowerSeries(_rotate)
-
-    @property
-    def flip( self ):
-        return self.rotate(1)
-
-    @property
-    def zero(self):
-        for term in self:
-            return term
-
-    @property
-    def tail(self):
-        @memoizedGenerator
-        def _tail():
-            for term in islice(self, 1, None):
-                yield term
-
-        return PowerSeries(_tail)
-
-    @property
-    def xmul(self):
-        @memoizedGenerator
-        def _xmul():
-            yield self.zero*0
-            for term in self:
-                yield term
-
-        return PowerSeries(_xmul)
-
-    def __add__(self, entry):
-        if is_powerseries(entry):
-            @memoizedGenerator
-            def _add():
-                for term1, term2 in izip(self, entry):
-                    yield term1 + term2
-        else:
-            @memoizedGenerator
-            def _add():
-                it = iter(self)
-                yield next(it) + entry
-
-                for term in it:
-                    yield term
-
-        return PowerSeries(_add)
-
-    def __mul__(self, entry):
-        if not is_powerseries(entry):
-            if entry == 1:
-                return self
-            elif entry == 0 and not is_powerseries(self.zero):
-                return PowerSeries()
-            else:
-                return self.deep_apply( lambda x: x*entry )
-        
-        @memoizedGenerator
-        def _mul():
-            f0 = self.zero
-            g0 = entry.zero
-            yield f0 * g0
-
-            F = self.tail
-            G = entry.tail
-
-            r1 = 0
-            mterms = [F * G]
-            if is_powerseries(f0) or f0 != 0:
-                f0G = G.deep_apply( lambda x: f0*x )
-                r1 += f0G.zero
-                mterms.append(f0G.tail)
-            if is_powerseries(g0) or g0 != 0:
-                g0F = F.deep_apply( lambda x: g0*x )
-                r1 += g0F.zero
-                mterms.append(g0F.tail)
-            
-            yield r1
-
-            for terms in izip(*mterms):
-                yield sum(terms)
-
-        return PowerSeries(_mul)
-
-    def __rdiv__(self, entry):
-        """
-
-        >>> B = 1 / (1 - X - X*Y)
-        >>> 1/B == 1-X-X*Y
-        True
-
-        """
-
-        if is_powerseries(entry):
-            return entry * (1/self)
-
-        @memoizedGenerator
-        def _rdiv():
-            f0 = self.zero
-            if is_powerseries(f0):
-                recip = entry / f0
-            elif f0 == 1:
-                recip = entry
-            elif isinstance(f0, int):
-                recip = F(entry, f0)
-            else: 
-                recip = entry / f0
-
-            yield recip
-
-            for term in ( (self.tail * R).deep_apply( lambda x: x*(-recip) ) ):
-                yield term
-
-        R = PowerSeries(_rdiv)
-        return R
-
-    __radd__ = __add__
-
-    def __sub__(self, entry):
-        return self + (-entry)
-
-    def __rsub__(self, entry):
-        return entry + (-self)
-
-    def __neg__(self):
-        return self.deep_apply( lambda x: -x )
-
-    __rmul__ = __mul__
-
-    def __div__(self, entry):
-        if is_powerseries(entry):
-            return self * (1 / entry)
+)
         elif entry == 1:
             return self
         else:
@@ -390,37 +231,45 @@ def linsolve( M, b ):
     True
 
     """
-    if len(M) == 2:
-        a00 = M[0][0]
-        a01 = M[0][1]
-        a10 = M[1][0]
-        a11 = M[1][1]
-
-        b0 = b[0]
-        b1 = b[1]
-
-        det = a00*a11 - a01*a10
-
-        x0 = (a11*b0 - a01*b1)/det
-        x1 = -(a10*b0 - a00*b1)/det
-
-        return (x0,x1)
 
     n = len(M)
-    for i in range(n):
-        inv = 1/M[i][i]
-        M[i] = [ u*inv for u in M[i] ]
-        b[i] = inv*b[i]
+    if all( all( not is_powerseries(e) for e in row ) for row in M ) and all( not is_powerseries(e) for e in b ):
+        for i in range(n):
+            inv = F(1,1)/M[i][i]
+            M[i] = [ u*inv for u in M[i] ]
+            b[i] = inv*b[i]
 
-        for j in range(n):
-            if i == j:
-                continue
+            for j in range(n):
+                if i == j:
+                    continue
 
-            d = M[j][i]
-            b[j] = b[j] - b[i]*d
-            M[j] = [ t - r*d for t,r in zip(M[j], M[i]) ]
+                d = M[j][i]
+                b[j] = b[j] - b[i]*d
+                M[j] = [ t - r*d for t,r in zip(M[j], M[i]) ]
 
-    return b
+        return tuple(b)
+    else:
+        def _linsolve():
+            r0 = linsolve( [ [ e.zero for e in row ] for row in M ], [ e.zero for e in b ] )
+            yield r0
+            print r0
+
+            p = [ eB.tail - sum( eM.tail*eR for eM,eR in zip(row,r0) ) for row,eB in zip(M,b) ]
+            print p[0], M[0][0], b[0]
+
+            for r in linsolve( M, p ):
+                yield r
+
+        pt = PowerSeries(_linsolve)
+
+        def make_solver(k):
+            def _linsolveproj():
+                for term in pt:
+                    yield term[k]
+
+            return PowerSeries(_linsolveproj)
+
+        return tuple( make_solver(k) for k in range(n) )
 
 def solve( *args ):
     """
@@ -578,5 +427,22 @@ Y = tensor(I, X)
 Z = tensor(I, Y)
 
 if __name__ == '__main__':
-    import doctest
-    doctest.testmod()
+    
+    M = [ [1 - X] ]
+    b = [ 1+X*0 ]
+    print linsolve(M, b)[0].getstr(10)
+    raise
+
+
+    W = [ [ exp(X+2*Y), log(1+Y) ], [ X**2 - exp(Y*(exp(X)-1)), 1/(1-X*Y-X) ]  ]
+    B = [  X + Y*3 ,  1/(1-X*Y) ]
+    W2 = W[:]
+    B2 = B[:]
+
+    R = linsolve( W, B )
+    print R[0]
+    print R[1]
+    print R[0]*W2[0][0] + R[1]*W2[0][1] - B2[0]
+    
+#import doctest
+#doctest.testmod()
