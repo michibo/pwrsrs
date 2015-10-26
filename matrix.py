@@ -7,6 +7,9 @@ def hilbert(N):
 def identity(N):
     return Matrix( tuple( tuple( 1 if i==j else 0 for j in range(N) ) for i in range(N)) )
 
+def unit_vec(N, k):
+    return Matrix( tuple( (1,) if k==i else (0,) for i in range(N) ) )
+
 class Matrix(object):
     def __init__( self, rows ):
         self._N = len(rows)
@@ -14,16 +17,32 @@ class Matrix(object):
         self._rows = rows
 
     def __str__(self):
-        return str(self._rows)
+        return "[%s]" % ",".join("(%s)" % ",".join( str(e) for e in row ) for row in self)
+
+    def __iter__(self):
+        return iter(self._rows)
        
     def __eq__(self, entry):
         return  self._N == entry._N and \
                 self._M == entry._M and \
-                all( all(e1==e2 for e1,e2 in zip(row1,row2)) for row1,row2 in zip(self._rows, entry._rows) )
+                all( all(e1==e2 for e1,e2 in zip(row1,row2)) for row1,row2 in zip(self, entry) )
+
+    def __add__(self, entry):
+        if not is_matrix(entry):
+            if isinstance(entry, int) and entry == 0:
+                return self
+            else:
+                raise
+        else:
+            if self._N != entry._N or self._M != entry._M:
+                raise ValueError("Cannot add incompatitible matrices!")
+            return Matrix( tuple( tuple( e1+e2 for e1,e2 in zip(row1,row2) ) for row1,row2 in zip(self,entry) ) )
+
+    __radd__ = __add__
 
     def __mul__(self, entry):
         if not is_matrix(entry):
-            return Matrix( tuple( tuple( e*entry for e in row ) for row in self._rows ) )
+            return Matrix( tuple( tuple( e*entry for e in row ) for row in self ) )
 
         if self._M != entry._N:
             raise ValueError("Cannot multiply incompatitible matrices!")
@@ -32,6 +51,11 @@ class Matrix(object):
             tuple( tuple( sum( self._rows[i][k]*entry._rows[k][j] for k in range(self._M) ) 
             for j in range(entry._M) )
             for i in range(self._N) ) )
+
+    __rmul__ = __mul__
+
+    def __neg__(self):
+        return Matrix( tuple( tuple( -e for e in row ) for row in self ) )
         
     def __div__(self, entry):
         """
@@ -47,15 +71,18 @@ class Matrix(object):
         
         """
         if not is_matrix(entry):
-            return Matrix( tuple( tuple( e/entry for e in row ) for row in self._rows ) )
+            if hasattr(entry, "__rdiv__"):
+                return entry.__rdiv__(self)
+            else:
+                raise ValueError("can't divide by Matrix")
 
         if entry._N != entry._M:
             raise ValueError("Matrix not invertible!")
 
         N = entry._N
 
-        M = [ list(row) for row in entry._rows ]
-        b = [ list(row) for row in self._rows  ]
+        M = [ list(row) for row in entry ]
+        b = [ list(row) for row in self  ]
 
         for i in range(N):
 # Pivot for float:

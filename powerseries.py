@@ -2,6 +2,7 @@ from fractions import Fraction as F
 from itertools import count, islice, izip, repeat, imap
 import math
 from math import floor
+import matrix
 from matrix import Matrix
 
 from MemoizedGenerator import memoizedGenerator
@@ -12,12 +13,13 @@ def repeated(func, n):
     return ret
 
 class PowerSeries(object):
-    testlimit = 10
+    testlimit = 5
 
     def __init__(self, g=None):
         self.__g = g
 
     def __eq__(self, entry):
+        print "Warning: comparing powerseries!"
         return all(s == e for s,e in islice(izip(self,entry), self.testlimit))
 
     def __iter__( self ):
@@ -123,12 +125,12 @@ class PowerSeries(object):
 
     def __mul__(self, entry):
         if not is_powerseries(entry):
-            if entry == 1:
+            if not isinstance(entry, Matrix) and entry == 1:
                 return self
-            elif entry == 0 and not is_powerseries(self.zero):
+            elif not isinstance(entry, Matrix) and entry == 0 and not is_powerseries(self.zero):
                 return PowerSeries()
             else:
-                return self.deep_apply( lambda x: x*entry )
+                return self.deep_apply( lambda x: entry*x )
         
         @memoizedGenerator
         def _mul():
@@ -139,19 +141,14 @@ class PowerSeries(object):
             F = self.tail
             G = entry.tail
 
-            r1 = 0
-            mterms = [F * G]
+            mterms = [(F * G).xmul]
             if is_powerseries(f0) or f0 != 0:
                 f0G = G.deep_apply( lambda x: f0*x )
-                r1 += f0G.zero
-                mterms.append(f0G.tail)
+                mterms.append(f0G)
             if is_powerseries(g0) or g0 != 0:
                 g0F = F.deep_apply( lambda x: g0*x )
-                r1 += g0F.zero
-                mterms.append(g0F.tail)
+                mterms.append(g0F)
             
-            yield r1
-
             for terms in izip(*mterms):
                 yield sum(terms)
 
@@ -169,13 +166,12 @@ class PowerSeries(object):
         if is_powerseries(entry):
             return entry * (1/self)
 
+        print "entry", entry
         @memoizedGenerator
         def _rdiv():
             f0 = self.zero
             if is_powerseries(f0):
                 recip = entry / f0
-            elif f0 == 1:
-                recip = entry
             elif isinstance(f0, int):
                 recip = F(entry, f0)
             else: 
@@ -300,7 +296,7 @@ class PowerSeries(object):
         def _compose():
             c0 = self.deep_apply(get_zero, n)( *map( get_zero, args ) )
 
-            G = ( self.deep_apply( D, k ) for k in xrange(n) )
+            G = ( self.deep_apply( D, k ) for k in range(n) )
             F = imap( D, args )
 
             r = sum( g.deep_apply(lambda x, f=f: f*x, n) for g,f in izip(G, F) ) + self.deep_apply( D, n )
@@ -355,6 +351,45 @@ def linsolve( M, b ):
 
     return b
 
+def solve_vector( n, v ):
+    """
+    >>> print solve_vector(1, ( Y-1 + exp(X) )*matrix.identity(1))
+    """
+    v0 = repeated( get_zero, n )(v)
+    print v0
+    print v
+
+    if not is_powerseries( v0 ):
+        if all( e == 0 for (e,) in v0 ):
+            return Matrix( tuple( (0,) for i in range(n)) )
+        else:
+            raise ValueError("No solution")
+
+    c0 = solve_vector( n, v.zero )
+    
+    args = [ v.deep_apply( D, k ) for k in range(n) ]
+    @memoizedGenerator
+    def _dmat():
+        for m in izip( *args ):
+            yield Matrix( tuple( tuple( e for (e,) in row ) for row in zip(*m) ) )
+
+    M = PowerSeries(_dmat)
+
+    b = -v.deep_apply( D, n )
+
+    dfs = b/M
+
+    @memoizedGenerator
+    def _sol():
+        SOLs = [ SOL.deep_apply( lambda x: x._rows[i][0] ) for i in range(n) ]
+
+        for term in integral( dfs(*SOLs), c0 ):
+            yield term
+
+    SOL = PowerSeries( _sol )
+
+    return SOL
+
 def solve( *args ):
     """
         
@@ -365,7 +400,7 @@ def solve( *args ):
     >>> all( t.compose( solve(t)[0] ) == tensor(ZERO, ZERO) for t in T )
     True
 
-    >>> W = [ X + Y + 2*Z + Y*Y - Y*Y*Y, X + Z +X*X ]
+    >>> W = [ X + Y + 2*Z + Y*Y - Y*Y*Y, X + Z + X*X ]
     >>> R = solve(*W)
 
     >>> W[0](*R) == ZERO
@@ -386,7 +421,7 @@ def solve( *args ):
     
     c0s = solve( *[ a.deep_apply( get_zero, n ) for a in args ] )
 
-    m = [ [ a.deep_apply( D, k ) for k in xrange(n) ] for a in args  ]
+    m = [ [ a.deep_apply( D, k ) for k in range(n) ] for a in args  ]
     b = [  -a.deep_apply( D, n ) for a in args ]
 
     dfs = linsolve( m, b )
@@ -445,7 +480,10 @@ def tensor( *args ):
 
 def exp( f ):
     if not is_powerseries(f):
-        return math.exp(f)
+        if f == 0:
+            return 1
+        else:
+            return math.exp(f)
 
     """
 
@@ -511,5 +549,16 @@ Y = tensor(I, X)
 Z = tensor(I, Y)
 
 if __name__ == '__main__':
-    import doctest
-    doctest.testmod()
+    B = (I-X)*matrix.identity(2)
+    print "B", B
+
+    print "1/B", matrix.identity(2)/B
+
+    
+    A =  ( Y-1 + exp(X) )*matrix.identity(1)
+    print A
+    #print solve_vector(1, ( Y-1 + exp(X) )*matrix.identity(1))
+    
+    #import doctest
+    #doctest.testmod()
+
