@@ -166,7 +166,6 @@ class PowerSeries(object):
         if is_powerseries(entry):
             return entry * (1/self)
 
-        print "entry", entry
         @memoizedGenerator
         def _rdiv():
             f0 = self.zero
