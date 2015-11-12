@@ -350,6 +350,37 @@ def linsolve( M, b ):
 
     return b
 
+def powerlinsolve( M, b ): 
+    """
+    >>> W = [ [ exp(X+2*Y), log(1+Y) ], [ X**2 - exp(Y*(exp(X)-1)), 1/(1-X*Y-X) ]  ]
+    >>> B = [  X + Y*3 ,  1/(1-X*Y) ]
+    >>> W2 = W[:]
+    >>> B2 = B[:]
+
+    >>> R = linsolve( W, B )
+    >>> R[0]*W2[0][0] + R[1]*W2[0][1] - B2[0] == tensor(ZERO, ZERO)
+    True
+
+    >>> R[0]*W2[1][0] + R[1]*W2[1][1] - B2[1] == tensor(ZERO, ZERO)
+    True
+
+    """
+    n = len(M)
+    for i in range(n):
+        inv = 1/M[i][i]
+        M[i] = [ u*inv for u in M[i] ]
+        b[i] = inv*b[i]
+
+        for j in range(n):
+            if i == j:
+                continue
+
+            d = M[j][i]
+            b[j] = b[j] - b[i]*d
+            M[j] = [ t - r*d for t,r in zip(M[j], M[i]) ]
+
+    return b
+
 def solve_vector( n, v ):
     """
     >>> print solve_vector(1, ( Y-1 + exp(X) )*matrix.identity(1))
