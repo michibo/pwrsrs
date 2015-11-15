@@ -45,7 +45,7 @@ class Matrix(object):
             return Matrix( tuple( tuple( e*entry for e in row ) for row in self ) )
 
         if self._M != entry._N:
-            raise ValueError("Cannot multiply incompatitible matrices!")
+            raise ValueError("Cannot multiply incompatitible matrices! _M=%d _N=%d" % (self._M, self._N))
 
         return Matrix( 
             tuple( tuple( sum( self._rows[i][k]*entry._rows[k][j] for k in range(self._M) ) 
