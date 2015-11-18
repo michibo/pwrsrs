@@ -367,22 +367,22 @@ def linsolve2( M, b ):
     """
     n = len(b)
     if all( all( not is_powerseries( e ) for e in row ) for row in M ):
-        M = M[:]
-        b = b[:]
+        M1 = M[:]
+        b1 = b[:]
         for i in range(n):
-            inv = F(1,1)/M[i][i]
-            M[i] = [ u*inv for u in M[i] ]
-            b[i] = inv*b[i]
+            inv = F(1,1)/M1[i][i]
+            M1[i] = [ u*inv for u in M1[i] ]
+            b1[i] = inv*b1[i]
 
             for j in range(n):
                 if i == j:
                     continue
 
-                d = M[j][i]
-                b[j] = b[j] - b[i]*d
-                M[j] = [ t - r*d for t,r in zip(M[j], M[i]) ]
+                d = M1[j][i]
+                b1[j] = b1[j] - b1[i]*d
+                M1[j] = [ t - r*d for t,r in zip(M1[j], M1[i]) ]
 
-        return b
+        return b1
 
     M0 = [ [ e.zero for e in row ] for row in M ]
     M1 = [ [ e.tail for e in row ] for row in M ]
