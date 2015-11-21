@@ -61,16 +61,6 @@ class PowerSeries(object):
         else:
             return self.deep_apply( lambda x: x.deep_apply(func, n-1) )
 
-
-    @property
-    def ps_exp(self):
-        def _g(m=1):
-            for i,term in enumerate(self):
-                yield m*term
-                m = m*(i+1)
-
-        return PowerSeries( _g )
-
     @property
     def zero(self):
         for term in self:
@@ -106,9 +96,7 @@ class PowerSeries(object):
             if entry == 1:
                 return self
             elif entry == 0:
-                if is_powerseries(self.zero):
-                    return self.zero*0
-                else:
+                if not is_powerseries(self.zero):
                     return PowerSeries()
             else:
                 return self.deep_apply( lambda x: x*entry )
