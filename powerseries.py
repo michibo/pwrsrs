@@ -2,8 +2,6 @@ from fractions import Fraction as F
 from itertools import count, islice, izip, repeat, imap
 import math
 from math import floor
-import matrix
-from matrix import Matrix
 
 from MemoizedGenerator import memoizedGenerator
 
@@ -13,7 +11,7 @@ def repeated(func, n):
     return ret
 
 class PowerSeries(object):
-    testlimit = 5
+    testlimit = 7
 
     def __init__(self, g=None):
         self.__g = g
@@ -89,7 +87,6 @@ class PowerSeries(object):
 
     @property
     def tail(self):
-        @memoizedGenerator
         def _tail():
             for term in islice(self, 1, None):
                 yield term
@@ -98,7 +95,6 @@ class PowerSeries(object):
 
     @property
     def xmul(self):
-        @memoizedGenerator
         def _xmul():
             yield self.zero*0
             for term in self:
@@ -125,10 +121,13 @@ class PowerSeries(object):
 
     def __mul__(self, entry):
         if not is_powerseries(entry):
-            if not isinstance(entry, Matrix) and entry == 1:
+            if entry == 1:
                 return self
-            elif not isinstance(entry, Matrix) and entry == 0 and not is_powerseries(self.zero):
-                return PowerSeries()
+            elif entry == 0:
+                if is_powerseries(self.zero):
+                    return self.zero*0
+                else:
+                    return PowerSeries()
             else:
                 return self.deep_apply( lambda x: x*entry )
         
@@ -335,178 +334,33 @@ def linsolve( M, b ):
 
     """
     n = len(M)
+    diag = b[:]
     for i in range(n):
-        inv = 1/M[i][i]
-        M[i] = [ u*inv for u in M[i] ]
-        b[i] = inv*b[i]
+        for k in range(i, n):
+            if is_powerseries(M[k][i]):
+                if M[k][i].zero != 0:
+                    break
+            elif M[k][i] != 0:
+                break
+        else:
+            raise
 
-        for j in range(n):
-            if i == j:
-                continue
+        if k != i:
+            M[i], M[k] = M[k], M[i]
+            b[i], b[k] = b[k], b[i]
 
-            d = M[j][i]
+        inv = F(1,1)/M[i][i]
+        diag[i] = inv
+
+        for j in range(i+1, n):
+            d = M[j][i]*inv
             b[j] = b[j] - b[i]*d
-            M[j] = [ t - r*d for t,r in zip(M[j], M[i]) ]
+            M[j]= [0*e for e in M[j][:i+1] ] + [ t - r*d for t,r in zip(M[j], M[i])[i+1:] ]
+
+    for i in reversed(range(n)):
+        b[i] = diag[i]*(b[i] - sum( M[i][j]*b[j] for j in range(i+1,n) ))
 
     return b
-
-def linsolve2( M, b ): 
-    """
-    >>> W = [ [ exp(X+2*Y), log(1+Y) ], [ X**2 - exp(Y*(exp(X)-1)), 1/(1-X*Y-X) ]  ]
-    >>> B = [  X + Y*3 ,  1/(1-X*Y) ]
-    >>> W2 = W[:]
-    >>> B2 = B[:]
-
-    >>> R = linsolve2( W, B )
-    >>> R[0]*W2[0][0] + R[1]*W2[0][1] - B2[0] == tensor(ZERO, ZERO)
-    True
-
-    >>> R[0]*W2[1][0] + R[1]*W2[1][1] - B2[1] == tensor(ZERO, ZERO)
-    True
-
-    """
-    n = len(b)
-    if all( all( not is_powerseries( e ) for e in row ) for row in M ):
-        M1 = M[:]
-        b1 = b[:]
-        for i in range(n):
-            inv = F(1,1)/M1[i][i]
-            M1[i] = [ u*inv for u in M1[i] ]
-            b1[i] = inv*b1[i]
-
-            for j in range(n):
-                if i == j:
-                    continue
-
-                d = M1[j][i]
-                b1[j] = b1[j] - b1[i]*d
-                M1[j] = [ t - r*d for t,r in zip(M1[j], M1[i]) ]
-
-        return b1
-
-    M0 = [ [ e.zero for e in row ] for row in M ]
-    M1 = [ [ e.tail for e in row ] for row in M ]
-
-    def _linsolve(b=b):
-        b0 = [ e.zero for e in b ]
-
-        x0 = linsolve2(M0, b0)
-        yield x0
-
-# M0 x0 = b0
-# M x1 + M1 x0 = b1
-# M x1 = b1 - M1 x0
-
-        b1 = [ e.tail for e in b ]
-        r1 = [ eb1 - sum( eM1*ex0 for eM1, ex0 in zip(row, x0) ) for row, eb1 in zip(M1, b1) ]
-
-        for term in _linsolve(r1):
-            yield term
-    
-    SOL = PowerSeries(_linsolve)
-
-    def make_x(k):
-        def _xk():
-            for term in SOL:
-                yield term[k]
-
-        return PowerSeries(_xk)
-
-    return [ make_x(k) for k in range(n) ]
-
-def powerlinsolve( M, b ):
-    #"""
-    #>>> W = [ [ exp(X+2*Y), log(1+Y) ], [ X**2 - exp(Y*(exp(X)-1)), 1/(1-X*Y-X) ]  ]
-    #>>> B = [ [  X + Y*3] , [ 1/(1-X*Y) ] ]
-    #>>> W2 = W[:]
-    #>>> B2 = B[:]
-#
-#    >>> R = powerlinsolve( W, B )
-#    >>> R[0]*W2[0][0] + R[1]*W2[0][1] - B2[0][0] == tensor(ZERO, ZERO)
-#    True
-#
-#    >>> R[0]*W2[1][0] + R[1]*W2[1][1] - B2[1][0] == tensor(ZERO, ZERO)
-#    True
-#
-#    """
-    n = len(b)
-
-    def _Mgen(M):
-        if all( all( not is_powerseries( e ) for e in row ) for row in M ):
-            return Matrix(M)
-
-        def _M():
-            M0 = [ [ e.zero for e in row ] for row in M ]
-            yield _Mgen(M0) 
-
-            M1 = [ [ e.tail for e in row ] for row in M ]
-            for term in _Mgen( M1 ):
-                yield term
-
-        return PowerSeries(_M)
-
-    mM = _Mgen(M)
-    mb = _Mgen(b)
-
-    mx = (matrix.identity(n)/mM) *mb
-
-    def proj( M, i, j ):
-        if is_powerseries(M):
-            def _proj():
-                for term in M:
-                    yield proj( term, i, j )
-            return PowerSeries(_proj)
-        else:
-            return M._rows[i][j]
-        
-
-    def make_x( k ):
-        def _xk(k=k):
-            for term in mx:
-                yield proj( term, k, 0 )
-
-        return PowerSeries(_xk)
-
-    return [ make_x(k) for k in range(n) ]
-
-def solve_vector( n, v ):
-    """
-    >>> print solve_vector(1, ( Y-1 + exp(X) )*matrix.identity(1))
-    """
-    v0 = repeated( get_zero, n )(v)
-    print v0
-    print v
-
-    if not is_powerseries( v0 ):
-        if all( e == 0 for (e,) in v0 ):
-            return Matrix( tuple( (0,) for i in range(n)) )
-        else:
-            raise ValueError("No solution")
-
-    c0 = solve_vector( n, v.zero )
-    
-    args = [ v.deep_apply( D, k ) for k in range(n) ]
-    @memoizedGenerator
-    def _dmat():
-        for m in izip( *args ):
-            yield Matrix( tuple( tuple( e for (e,) in row ) for row in zip(*m) ) )
-
-    M = PowerSeries(_dmat)
-
-    b = -v.deep_apply( D, n )
-
-    dfs = b/M
-
-    @memoizedGenerator
-    def _sol():
-        SOLs = [ SOL.deep_apply( lambda x: x._rows[i][0] ) for i in range(n) ]
-
-        for term in integral( dfs(*SOLs), c0 ):
-            yield term
-
-    SOL = PowerSeries( _sol )
-
-    return SOL
 
 def solve( *args ):
     """
@@ -667,33 +521,6 @@ Y = tensor(I, X)
 Z = tensor(I, Y)
 
 if __name__ == '__main__':
-
-    W = [ [ exp(X+2*Y), log(1+Y) ], [ X**2 - exp(Y*(exp(X)-1)), 1/(1-X*Y-X) ]  ]
-    B = [  X + Y*3 ,  1/(1-X*Y) ]
-    W2 = W[:]
-    B2 = B[:]
-
-    A = [ [ 1-X, X*X], [X*0, 1-X] ]
-    A1 = [ [ 123, 43], [512, 3] ]
-
-    B3 = [ X.tail*X, X.tail ]
-    R2 = linsolve2(A, B3)
-    R3 = linsolve2(A1, [ 3, 4] )
-    print R3[0]*A1[1][0] + R3[1]*A1[1][1]
-    print A[0][0]
-    print B3[0]
-    print R2[0]*A[0][0] + R2[1]*A[0][1]
-
-
-    R = linsolve2( W2, B )
-    print R[0]
-    print R[1]
-    print B2[0]
-
-    print R[0]*W2[0][0] + R[1]*W2[0][1]
-    
-    #print solve_vector(1, ( Y-1 + exp(X) )*matrix.identity(1))
-    
-    #import doctest
-    #doctest.testmod()
+    import doctest
+    doctest.testmod()
 
