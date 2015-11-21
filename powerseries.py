@@ -1,20 +1,14 @@
 from fractions import Fraction as F
-from itertools import count, islice, izip, repeat, imap
-import math
-from math import floor
+from itertools import count, islice, izip, repeat, imap, chain
 
 from MemoizedGenerator import memoizedGenerator
 
-def repeated(func, n):
-    def ret(x):
-        return reduce( lambda x,func: func(x) , repeat(func, n), x )
-    return ret
-
 class PowerSeries(object):
-    testlimit = 7
+    testlimit = 6
 
     def __init__(self, g=None):
         self.__g = g
+        self.__zero = None
 
     def __eq__(self, entry):
         #print "Warning: comparing powerseries!"
@@ -61,15 +55,12 @@ class PowerSeries(object):
         if n == 1:
             @memoizedGenerator
             def _deep_apply():
-                for term in self:
-                    yield func(term)
-        else:
-            @memoizedGenerator
-            def _deep_apply():
-                for term in self:
-                    yield term.deep_apply( func, n-1 )
+                return imap( func, self )
 
-        return PowerSeries( _deep_apply )
+            return PowerSeries( _deep_apply )
+        else:
+            return self.deep_apply( lambda x: x.deep_apply(func, n-1) )
+
 
     @property
     def ps_exp(self):
@@ -88,17 +79,14 @@ class PowerSeries(object):
     @property
     def tail(self):
         def _tail():
-            for term in islice(self, 1, None):
-                yield term
+            return islice(self, 1, None)
 
         return PowerSeries(_tail)
 
     @property
     def xmul(self):
         def _xmul():
-            yield self.zero*0
-            for term in self:
-                yield term
+            return chain( ( self.zero*0,), self )
 
         return PowerSeries(_xmul)
 
@@ -106,16 +94,10 @@ class PowerSeries(object):
         if is_powerseries(entry):
             @memoizedGenerator
             def _add():
-                for term1, term2 in izip(self, entry):
-                    yield term1 + term2
+                return imap( lambda (a,b): a+b, izip( self, entry) )
         else:
-            @memoizedGenerator
             def _add():
-                it = iter(self)
-                yield next(it) + entry
-
-                for term in it:
-                    yield term
+                return chain( imap( lambda a: a+entry, islice(self, 0, 1) ), islice(self, 1, None) )
 
         return PowerSeries(_add)
 
@@ -202,7 +184,7 @@ class PowerSeries(object):
         elif entry == 1:
             return self
         elif entry == 0:
-            return 0*self
+            raise ValueError("Zero division error")
         else:
             return self * F(1, entry)
 
@@ -224,7 +206,7 @@ class PowerSeries(object):
             
         f0 = self.zero
         if not is_powerseries(f0) and f0 == 0:
-            if floor(alpha) == alpha:
+            if isinstance(alpha, int):
                 if alpha == 0:
                     return I
                     
@@ -281,7 +263,7 @@ class PowerSeries(object):
 
             if a == 0:
                 if n > 1:
-                    return self.deep_apply( get_zero, k )( *(args[:k] + args[k+1:]) )
+                    return self.deep_apply( lambda x: x.zero, k )( *(args[:k] + args[k+1:]) )
                 else:
                     return self.zero
             else:
@@ -290,14 +272,26 @@ class PowerSeries(object):
         except StopIteration:
             pass
 
+        def get_zero( d ):
+            if is_powerseries(d):
+                return d.zero
+            else:
+                return d
+
+        def get_D( d ):
+            if not is_powerseries(d):
+                return 0
+            else:
+                return D(d)
+
+        G = ( self.deep_apply( D, k ) for k in range(n) )
+        F = imap( D, args )
+
+        r = sum( g.deep_apply(lambda x, f=f: f*x, n) for g,f in izip(G, F) ) + self.deep_apply( get_D, n )
         @memoizedGenerator
         def _compose():
-            c0 = self.deep_apply(get_zero, n)( *map( get_zero, args ) )
+            c0 = self.deep_apply( get_zero, n )( *map( lambda x: x.zero, args ) )
 
-            G = ( self.deep_apply( D, k ) for k in range(n) )
-            F = imap( D, args )
-
-            r = sum( g.deep_apply(lambda x, f=f: f*x, n) for g,f in izip(G, F) ) + self.deep_apply( D, n )
             for term in integral(r.compose(*args), c0):
                 yield term
 
@@ -308,15 +302,6 @@ class PowerSeries(object):
 
 def is_powerseries( entry ):
     return isinstance(entry, PowerSeries)
-
-def get_zero( d ):
-    if is_powerseries(d):
-        return d.zero
-    else:
-        return d
-
-def get_tail( d ):
-    return d.tail
 
 def linsolve( M, b ): 
     """
@@ -343,7 +328,7 @@ def linsolve( M, b ):
             elif M[k][i] != 0:
                 break
         else:
-            raise
+            raise ValueError("Zero division Error")
 
         if k != i:
             M[i], M[k] = M[k], M[i]
@@ -381,20 +366,29 @@ def solve( *args ):
     True
 
     """
+
+    def get_D( d ):
+        if not is_powerseries(d):
+            return 0
+        else:
+            return D(d)
+
     n = len(args)
 
-    get_n_zero = repeated( get_zero, n )
+    a_n_zero = args
+    for i in range(n):
+        a_n_zero = tuple( a.zero for a in a_n_zero )
     
-    if any( not is_powerseries(get_n_zero(a)) for a in args ):
-        if all( get_n_zero(a) == 0 for a in args ):
+    if any( not is_powerseries(az) for az in a_n_zero ):
+        if all( az == 0 for az in a_n_zero ):
             return (0,)*n
         else:
             raise ValueError("No solution")
     
-    c0s = solve( *[ a.deep_apply( get_zero, n ) for a in args ] )
+    c0s = solve( *[ a.deep_apply( lambda x: x.zero, n ) for a in args ] )
 
     m = [ [ a.deep_apply( D, k ) for k in range(n) ] for a in args  ]
-    b = [  -a.deep_apply( D, n ) for a in args ]
+    b = [  -a.deep_apply( get_D, n ) for a in args ]
 
     dfs = linsolve( m, b )
     
@@ -403,22 +397,14 @@ def solve( *args ):
         def _solve():
             for term in integral( df(*SOL), c0 ):
                 yield term
+
         return PowerSeries(_solve)
 
     SOL = tuple( make_solver( df, c0 ) for df, c0 in zip(dfs, c0s) )
 
     return SOL
 
-def D( f, n=1 ):
-    if n == 0:
-        return f
-
-    if n > 1:
-        return repeated(D, n)(f)
-
-    if not is_powerseries(f):
-        return 0
-
+def D( f ):
     @memoizedGenerator
     def _D():
         for n,term in enumerate(f.tail):
@@ -455,7 +441,7 @@ def exp( f ):
         if f == 0:
             return 1
         else:
-            return math.exp(f)
+            raise ValueError("You can't calculate exp of %d with the powerseries package" % f)
 
     """
 
@@ -488,8 +474,6 @@ def exp( f ):
     return E
 
 def log( f ):
-    if not is_powerseries(f):
-        return math.log(f)
     """
 
     >>> l = log(1+X) 
@@ -520,7 +504,26 @@ X = I.xmul
 Y = tensor(I, X)
 Z = tensor(I, Y)
 
+def benchmark():
+    N = 20
+    def _fac():
+        r = 1
+        for n in count():
+            yield r
+            r*= n+1
+    
+    fac = PowerSeries( _fac )
+    print "fac: ", fac.getstr(N)
+
+    F = fac - 1
+    I = F / ( 1 + F)
+
+    Finv = solve( Y - F )[0]
+    print "Finv: ", Finv.getstr(N)
+
 if __name__ == '__main__':
     import doctest
     doctest.testmod()
 
+    import cProfile
+    cProfile.run('benchmark()')
