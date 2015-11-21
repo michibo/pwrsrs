@@ -3,16 +3,16 @@ from itertools import count, islice, izip, repeat, imap, chain
 
 from MemoizedGenerator import memoizedGenerator
 
-class PowerSeries(object):
-    testlimit = 6
+pstestlimit = 6
 
+class PowerSeries(object):
     def __init__(self, g=None):
         self.__g = g
         self.__zero = None
 
     def __eq__(self, entry):
-        #print "Warning: comparing powerseries!"
-        return all(s == e for s,e in islice(izip(self,entry), self.testlimit))
+        print("Warning: comparing powerseries!")
+        return Equal( self, entry )
 
     def __iter__( self ):
         return self.__g() if self.__g else repeat(0)
@@ -22,8 +22,8 @@ class PowerSeries(object):
 
     def getstr(self, num=None):
         def gen_str():
-            is_pps = any( isinstance(term, PowerSeries) for term in islice(self, num or self.testlimit ) )
-            for term in islice(self, num if num else self.testlimit):
+            is_pps = any( isinstance(term, PowerSeries) for term in islice(self, num or pstestlimit ) )
+            for term in islice(self, num if num else pstestlimit):
                 if is_pps:
                     yield term.getstr(num) + "\n"
                 else:
@@ -33,7 +33,7 @@ class PowerSeries(object):
 
     def getstrdeep(self, nums=[]):
         def gen_str():
-            n = nums[0] if nums else self.testlimit
+            n = nums[0] if nums else pstestlimit
             r = nums[1:] if nums else []
             is_pps = any( isinstance(term, PowerSeries) for term in islice(self, n) )
             for term in islice(self, n):
@@ -97,6 +97,12 @@ class PowerSeries(object):
                 return self
             elif entry == 0:
                 if not is_powerseries(self.zero):
+                    z = self.zero*0
+                    def _z():
+                        return repeat( z )
+
+                    return PowerSeries(_z)
+                else:
                     return PowerSeries()
             else:
                 return self.deep_apply( lambda x: x*entry )
@@ -123,11 +129,21 @@ class PowerSeries(object):
 
         return PowerSeries(_mul)
 
+    def __div__(self, entry):
+        if is_powerseries(entry):
+            return entry.__rdiv__(self)
+        elif entry == 1:
+            return self
+        elif entry == 0:
+            raise ValueError("Zero division error")
+        else:
+            return self * F(1, entry)
+
     def __rdiv__(self, entry):
         """
 
         >>> B = 1 / (1 - X - X*Y)
-        >>> 1/B == 1-X-X*Y
+        >>> Equal(1/B, 1-X-X*Y)
         True
 
         """
@@ -166,28 +182,18 @@ class PowerSeries(object):
 
     __rmul__ = __mul__
 
-    def __div__(self, entry):
-        if is_powerseries(entry):
-            return entry.__rdiv__(self)
-        elif entry == 1:
-            return self
-        elif entry == 0:
-            raise ValueError("Zero division error")
-        else:
-            return self * F(1, entry)
-
     def __pow__( self, alpha ):
         """
-        >>> X**0 == I
+        >>> Equal(X**0, I)
         True
 
-        >>> X*X == X**2
+        >>> Equal(X*X, X**2)
         True
     
-        >>> log((1/(1+X))**(F(3,2))) == -F(3,2)*log(1+X)
+        >>> Equal( log((1/(1+X))**(F(3,2))), -F(3,2)*log(1+X))
         True
 
-        >>> exp( X + 3*Y )**F(-4,7) == exp( -F(4,7) * (X + 3*Y) )
+        >>> Equal(exp( X + 3*Y )**F(-4,7), exp( -F(4,7) * (X + 3*Y) ))
         True
 
         """
@@ -222,24 +228,24 @@ class PowerSeries(object):
     def compose(self, *args):
         """
 
-        >>> (1/(1-X-X*Y)).compose(X,X) == 1/(1-X-X**2)
+        >>> Equal((1/(1-X-X*Y)).compose(X,X), 1/(1-X-X**2))
         True
 
         >>> A = exp(X)
         >>> B = log(1/(1-X)) 
-        >>> A.compose(B) == 1/(1-X)
+        >>> Equal( A.compose(B), 1/(1-X) )
         True
 
-        >>> (1/(1-X-X*Y)).compose(Y,X) == 1/(1-Y-Y*X)
+        >>> Equal((1/(1-X-X*Y)).compose(Y,X), 1/(1-Y-Y*X))
         True
 
-        >>> (1/(1-X-X*Y)).compose(Y) == 1/(1-Y-Y*X)
+        >>> Equal((1/(1-X-X*Y)).compose(Y), 1/(1-Y-Y*X))
         True
 
-        >>> (1/(1-X-Z)).compose(X,Y,X*Y) == 1/(1-X-X*Y)
+        >>> Equal((1/(1-X-Z)).compose(X,Y,X*Y), 1/(1-X-X*Y))
         True
 
-        >>> (1/(1-X)).compose(Y) == 1/(1-Y)
+        >>> Equal((1/(1-X)).compose(Y), 1/(1-Y))
         True
 
         """
@@ -260,25 +266,19 @@ class PowerSeries(object):
         except StopIteration:
             pass
 
-        def get_zero( d ):
-            if is_powerseries(d):
-                return d.zero
-            else:
-                return d
+        get_zero = lambda d: d.zero if is_powerseries(d) else d
+        get_D    = lambda d: D(d)   if is_powerseries(d) else 0
 
-        def get_D( d ):
-            if not is_powerseries(d):
-                return 0
-            else:
-                return D(d)
-
-        G = ( self.deep_apply( D, k ) for k in range(n) )
-        F = imap( D, args )
-
-        r = sum( g.deep_apply(lambda x, f=f: f*x, n) for g,f in izip(G, F) ) + self.deep_apply( get_D, n )
         @memoizedGenerator
         def _compose():
-            c0 = self.deep_apply( get_zero, n )( *map( lambda x: x.zero, args ) )
+            G = ( self.deep_apply( D, k ) for k in range(n) )
+            F = imap( D, args )
+
+            r = sum( g.deep_apply(lambda x, f=f: f*x, n) for g,f in izip(G, F) ) + self.deep_apply( get_D, n )
+
+            z = self.deep_apply( get_zero, n )
+
+            c0 = z.compose( *map( lambda x: x.zero, args ) )
 
             for term in integral(r.compose(*args), c0):
                 yield term
@@ -287,6 +287,16 @@ class PowerSeries(object):
 
     def __call__( self, *args ):
         return self.compose(*args)
+
+def Equal( entry1, entry2, n=pstestlimit ):
+    if not is_powerseries( entry1 ) and not is_powerseries( entry2 ):
+        return entry1 == entry2
+    elif not is_powerseries( entry1 ):
+        return entry2.zero == entry1
+    elif not is_powerseries( entry2 ):
+        return entry1.zero == entry2
+    else:
+        return all( Equal( s, e, n) for s,e in islice(izip(entry1, entry2), n) )
 
 def is_powerseries( entry ):
     return isinstance(entry, PowerSeries)
@@ -299,21 +309,21 @@ def linsolve( M, b ):
     >>> B2 = B[:]
 
     >>> R = linsolve( W, B )
-    >>> R[0]*W2[0][0] + R[1]*W2[0][1] - B2[0] == tensor(ZERO, ZERO)
+    >>> Equal(R[0]*W2[0][0] + R[1]*W2[0][1] - B2[0], tensor(ZERO, ZERO))
     True
 
-    >>> R[0]*W2[1][0] + R[1]*W2[1][1] - B2[1] == tensor(ZERO, ZERO)
+    >>> Equal(R[0]*W2[1][0] + R[1]*W2[1][1] - B2[1], tensor(ZERO, ZERO))
     True
 
     """
+
+    get_zero = lambda d: d.zero if is_powerseries(d) else d
+
     n = len(M)
-    diag = b[:]
+    diag = [0]*n
     for i in range(n):
         for k in range(i, n):
-            if is_powerseries(M[k][i]):
-                if M[k][i].zero != 0:
-                    break
-            elif M[k][i] != 0:
+            if get_zero(M[k][i]) != 0:
                 break
         else:
             raise ValueError("Zero division Error")
@@ -328,7 +338,7 @@ def linsolve( M, b ):
         for j in range(i+1, n):
             d = M[j][i]*inv
             b[j] = b[j] - b[i]*d
-            M[j]= [0*e for e in M[j][:i+1] ] + [ t - r*d for t,r in zip(M[j], M[i])[i+1:] ]
+            M[j]= [0]*(i+1) + [ t - r*d for t,r in zip(M[j], M[i])[i+1:] ]
 
     for i in reversed(range(n)):
         b[i] = diag[i]*(b[i] - sum( M[i][j]*b[j] for j in range(i+1,n) ))
@@ -338,19 +348,19 @@ def linsolve( M, b ):
 def solve( *args ):
     """
         
-    >>> solve( Y-1 + exp(X))[0] == log(1-X)
+    >>> Equal(solve( Y-1 + exp(X))[0], log(1-X))
     True
 
     >>> T = [ log(1+X) + exp(Y)-1 + Z, 1/(1-X-X*Y) - 1 + Z ]
-    >>> all( t.compose( solve(t)[0] ) == tensor(ZERO, ZERO) for t in T )
+    >>> all( Equal(t.compose( solve(t)[0] ), tensor(ZERO, ZERO)) for t in T )
     True
 
     >>> W = [ X + Y + 2*Z + Y*Y - Y*Y*Y, X + Z + X*X ]
     >>> R = solve(*W)
 
-    >>> W[0](*R) == ZERO
+    >>> Equal( W[0](*R), ZERO )
     True
-    >>> W[1](*R) == ZERO
+    >>> Equal( W[1](*R), ZERO )
     True
 
     """
@@ -373,7 +383,9 @@ def solve( *args ):
         else:
             raise ValueError("No solution")
     
-    c0s = solve( *[ a.deep_apply( lambda x: x.zero, n ) for a in args ] )
+    get_zero = lambda d: d.zero if is_powerseries(d) else d
+
+    c0s = solve( *[ a.deep_apply( get_zero, n ) for a in args ] )
 
     m = [ [ a.deep_apply( D, k ) for k in range(n) ] for a in args  ]
     b = [  -a.deep_apply( get_D, n ) for a in args ]
@@ -392,20 +404,24 @@ def solve( *args ):
 
     return SOL
 
-def D( f ):
-    @memoizedGenerator
-    def _D():
-        for n,term in enumerate(f.tail):
-            yield (n+1) * term
+def D( f, n=1 ):
+    if n == 1:
+        @memoizedGenerator
+        def _D():
+            return imap( lambda (n,x): (n+1)*x, enumerate(f.tail) )
 
-    return PowerSeries(_D)
+        return PowerSeries(_D)
+    elif n == 0:
+        return f
+    elif isinstance(n, int) and n > 1:
+        return D( D(f), n-1 )
+    else:
+        raise ValueError("Can't take %d-th derivative" % n)
 
 def integral( f, const=0 ):
     @memoizedGenerator
     def _int():
-        yield const
-        for n, term in enumerate(f):
-            yield F(1,n+1)*term
+        return chain( (const,), imap( lambda (n,x): F(1,n+1)*x, enumerate(f) ) )
 
     return PowerSeries(_int)
 
@@ -434,14 +450,14 @@ def exp( f ):
     """
 
     >>> e = exp(X)
-    >>> e == D(e)
+    >>> Equal( e, D(e) )
     True
-    >>> e == integral(e, 1)
+    >>> Equal( e, integral(e, 1) )
     True
-    >>> log(e) == X
+    >>> Equal( log(e), X )
     True
     >>> d = exp(3*X*X)
-    >>> d*e == exp(X + 3*X*X)
+    >>> Equal(d*e, exp(X + 3*X**2))
     True
 
     """
@@ -465,9 +481,9 @@ def log( f ):
     """
 
     >>> l = log(1+X) 
-    >>> 3*l == log((1+X)*(1+X)*(1+X))
+    >>> Equal( 3*l, log((1+X)*(1+X)*(1+X)) )
     True
-    >>> D(l) == 1/(1+X)
+    >>> Equal( D(l), 1/(1+X) )
     True
 
     """
@@ -492,26 +508,6 @@ X = I.xmul
 Y = tensor(I, X)
 Z = tensor(I, Y)
 
-def benchmark():
-    N = 20
-    def _fac():
-        r = 1
-        for n in count():
-            yield r
-            r*= n+1
-    
-    fac = PowerSeries( _fac )
-    print "fac: ", fac.getstr(N)
-
-    F = fac - 1
-    I = F / ( 1 + F)
-
-    Finv = solve( Y - F )[0]
-    print "Finv: ", Finv.getstr(N)
-
 if __name__ == '__main__':
     import doctest
     doctest.testmod()
-
-    import cProfile
-    cProfile.run('benchmark()')
