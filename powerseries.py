@@ -1,5 +1,5 @@
 from fractions import Fraction as F
-from itertools import count, islice, izip, repeat, imap, chain
+from itertools import count, islice, repeat, chain, starmap
 
 from MemoizedGenerator import memoizedGenerator
 
@@ -55,7 +55,7 @@ class PowerSeries(object):
         if n == 1:
             @memoizedGenerator
             def _deep_apply():
-                return imap( func, self )
+                return map( func, self )
 
             return PowerSeries( _deep_apply )
         else:
@@ -84,10 +84,10 @@ class PowerSeries(object):
         if is_powerseries(entry):
             @memoizedGenerator
             def _add():
-                return imap( lambda (a,b): a+b, izip( self, entry) )
+                return starmap( lambda a,b: a+b, zip( self, entry ) )
         else:
             def _add():
-                return chain( imap( lambda a: a+entry, islice(self, 0, 1) ), islice(self, 1, None) )
+                return chain( map( lambda a: a+entry, islice(self, 0, 1) ), islice(self, 1, None) )
 
         return PowerSeries(_add)
 
@@ -124,14 +124,14 @@ class PowerSeries(object):
                 g0F = F.deep_apply( lambda x: x*g0 )
                 mterms.append(g0F)
             
-            for terms in izip(*mterms):
+            for terms in zip(*mterms):
                 yield sum(terms)
 
         return PowerSeries(_mul)
 
-    def __div__(self, entry):
+    def __truediv__(self, entry):
         if is_powerseries(entry):
-            return entry.__rdiv__(self)
+            return entry.__rtruediv__(self)
         elif entry == 1:
             return self
         elif entry == 0:
@@ -139,9 +139,8 @@ class PowerSeries(object):
         else:
             return self * F(1, entry)
 
-    def __rdiv__(self, entry):
+    def __rtruediv__(self, entry):
         """
-
         >>> B = 1 / (1 - X - X*Y)
         >>> Equal(1/B, 1-X-X*Y)
         True
@@ -154,11 +153,9 @@ class PowerSeries(object):
         @memoizedGenerator
         def _rdiv():
             f0 = self.zero
-            if is_powerseries(f0):
-                recip = entry / f0
-            elif isinstance(f0, int):
+            if isinstance(f0, int):
                 recip = F(entry, f0)
-            else: 
+            else:
                 recip = entry / f0
 
             yield recip
@@ -272,9 +269,9 @@ class PowerSeries(object):
         @memoizedGenerator
         def _compose():
             G = ( self.deep_apply( D, k ) for k in range(n) )
-            F = imap( D, args )
+            F = map( D, args )
 
-            r = sum( g.deep_apply(lambda x, f=f: f*x, n) for g,f in izip(G, F) ) + self.deep_apply( get_D, n )
+            r = sum( g.deep_apply(lambda x, f=f: f*x, n) for g,f in zip(G, F) ) + self.deep_apply( get_D, n )
 
             z = self.deep_apply( get_zero, n )
 
@@ -292,11 +289,11 @@ def Equal( entry1, entry2, n=pstestlimit ):
     if not is_powerseries( entry1 ) and not is_powerseries( entry2 ):
         return entry1 == entry2
     elif not is_powerseries( entry1 ):
-        return entry2.zero == entry1
+        return Equal(entry2.zero, entry1)
     elif not is_powerseries( entry2 ):
-        return entry1.zero == entry2
+        return Equal(entry1.zero, entry2)
     else:
-        return all( Equal( s, e, n) for s,e in islice(izip(entry1, entry2), n) )
+        return all( Equal( s, e, n) for s,e in islice(zip(entry1, entry2), n) )
 
 def is_powerseries( entry ):
     return isinstance(entry, PowerSeries)
@@ -317,13 +314,13 @@ def linsolve( M, b ):
 
     """
 
-    get_zero = lambda d: d.zero if is_powerseries(d) else d
+    get_deep_zero = lambda d: get_deep_zero(d.zero) if is_powerseries(d) else d
 
     n = len(M)
     diag = [0]*n
     for i in range(n):
         for k in range(i, n):
-            if get_zero(M[k][i]) != 0:
+            if get_deep_zero(M[k][i]) != 0:
                 break
         else:
             raise ValueError("Zero division Error")
@@ -338,7 +335,7 @@ def linsolve( M, b ):
         for j in range(i+1, n):
             d = M[j][i]*inv
             b[j] = b[j] - b[i]*d
-            M[j]= [0]*(i+1) + [ t - r*d for t,r in zip(M[j], M[i])[i+1:] ]
+            M[j]= [0]*(i+1) + [ t - r*d for t,r in islice(zip(M[j], M[i]), i+1, n) ]
 
     for i in reversed(range(n)):
         b[i] = diag[i]*(b[i] - sum( M[i][j]*b[j] for j in range(i+1,n) ))
@@ -408,7 +405,7 @@ def D( f, n=1 ):
     if n == 1:
         @memoizedGenerator
         def _D():
-            return imap( lambda (n,x): (n+1)*x, enumerate(f.tail) )
+            return starmap( lambda n,x: (n+1)*x, enumerate(f.tail) )
 
         return PowerSeries(_D)
     elif n == 0:
@@ -421,7 +418,7 @@ def D( f, n=1 ):
 def integral( f, const=0 ):
     @memoizedGenerator
     def _int():
-        return chain( (const,), imap( lambda (n,x): F(1,n+1)*x, enumerate(f) ) )
+        return chain( (const,), starmap( lambda n,x: F(1,n+1)*x, enumerate(f) ) )
 
     return PowerSeries(_int)
 
