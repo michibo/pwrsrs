@@ -3,7 +3,7 @@ from itertools import count, islice, repeat, chain, starmap
 
 from MemoizedGenerator import memoizedGenerator
 
-pstestlimit = 6
+pstestlimit = 5
 
 class PowerSeries(object):
     def __init__(self, g=None):
