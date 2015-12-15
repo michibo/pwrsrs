@@ -1,7 +1,7 @@
 from fractions import Fraction as F
 from itertools import count, islice, repeat, chain, starmap
 
-from MemoizedGenerator import memoizedGenerator
+from .MemoizedGenerator import memoizedGenerator
 
 pstestlimit = 5
 
