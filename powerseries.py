@@ -44,7 +44,6 @@ class PowerSeries(object):
 
         return "".join(gen_str()) + "..."
 
-
     def __getitem__(self, key):
         return next(islice(self, key, None))
 
@@ -60,6 +59,24 @@ class PowerSeries(object):
             return PowerSeries( _deep_apply )
         else:
             return self.deep_apply( lambda x: x.deep_apply(func, n-1) )
+
+    @property
+    def ord2exp(self):
+        def _ord2exp(f=1):
+            for n,term in enumerate(self):
+                yield F(term, f)
+                f*= n+1
+
+        return PowerSeries(_ord2exp)
+
+    @property
+    def exp2ord(self):
+        def _exp2ord(f=1):
+            for n,term in enumerate(self):
+                yield term * f
+                f*= n+1
+
+        return PowerSeries(_exp2ord)
 
     @property
     def zero(self):
