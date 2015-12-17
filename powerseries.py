@@ -62,6 +62,10 @@ class PowerSeries(object):
 
     @property
     def ord2exp(self):
+        """
+        >>> Equal((1/(1-X)).ord2exp, exp(X))
+        True
+        """
         def _ord2exp(f=1):
             for n,term in enumerate(self):
                 yield F(term, f)
@@ -71,6 +75,10 @@ class PowerSeries(object):
 
     @property
     def exp2ord(self):
+        """
+        >>> Equal(exp(X).exp2ord, 1/(1-X))
+        True
+        """
         def _exp2ord(f=1):
             for n,term in enumerate(self):
                 yield term * f
@@ -109,6 +117,10 @@ class PowerSeries(object):
         return PowerSeries(_add)
 
     def __mul__(self, entry):
+        """
+        >>> Equal((exp(X-Z)/(1-X)) * (exp(Y+Z)/(1-Y)), exp(X+Y)/(1-X-Y+X*Y))
+        True
+        """
         if not is_powerseries(entry):
             if entry == 1:
                 return self
@@ -306,9 +318,9 @@ def Equal( entry1, entry2, n=pstestlimit ):
     if not is_powerseries( entry1 ) and not is_powerseries( entry2 ):
         return entry1 == entry2
     elif not is_powerseries( entry1 ):
-        return Equal(entry2.zero, entry1)
+        return Equal(entry2.zero, entry1) and Equal(entry2.tail, PowerSeries())
     elif not is_powerseries( entry2 ):
-        return Equal(entry1.zero, entry2)
+        return Equal(entry1.zero, entry2) and Equal(entry1.tail, PowerSeries())
     else:
         return all( Equal( s, e, n) for s,e in islice(zip(entry1, entry2), n) )
 
