@@ -20,27 +20,27 @@ class PowerSeries(object):
     def __str__(self):
         return self.getstr()
 
-    def getstr(self, num=None):
+    def getstr(self, nums=[]):
         def gen_str():
-            is_pps = any( isinstance(term, PowerSeries) for term in islice(self, num or pstestlimit ) )
-            for term in islice(self, num if num else pstestlimit):
-                if is_pps:
-                    yield term.getstr(num) + "\n"
+            if isinstance(nums, int):
+                n = nums
+                r = nums
+            else:
+                n = nums[0] if nums else pstestlimit
+                r = nums[1:] if nums else []
+            
+            is_pps = isinstance(self.zero, PowerSeries)
+            def term_to_str( term ):
+                if isinstance(term, float):
+                    return "\t% .3e" % term
                 else:
-                    yield str(term) + ", "
+                    return "\t"+str(term)
 
-        return "".join(gen_str()) + "..."
-
-    def getstrdeep(self, nums=[]):
-        def gen_str():
-            n = nums[0] if nums else pstestlimit
-            r = nums[1:] if nums else []
-            is_pps = any( isinstance(term, PowerSeries) for term in islice(self, n) )
             for term in islice(self, n):
                 if is_pps:
                     yield term.getstrdeep(r) + "\n"
                 else:
-                    yield str(term) + ", "
+                    yield term_to_str(term) + ", "
 
         return "".join(gen_str()) + "..."
 
@@ -166,7 +166,7 @@ class PowerSeries(object):
         elif entry == 0:
             raise ValueError("Zero division error")
         else:
-            return self * F(1, entry)
+            return self * (F(1, 1) / entry)
 
     def __rtruediv__(self, entry):
         """
