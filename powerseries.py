@@ -125,7 +125,7 @@ class PowerSeries(object):
             if entry == 1:
                 return self
             elif entry == 0:
-                if not is_powerseries(self.zero):
+                if is_powerseries(self.zero):
                     z = self.zero*0
                     def _z():
                         return repeat( z )
