@@ -38,7 +38,7 @@ class PowerSeries(object):
 
             for term in islice(self, n):
                 if is_pps:
-                    yield term.getstrdeep(r) + "\n"
+                    yield term.getstr(r) + "\n"
                 else:
                     yield term_to_str(term) + ", "
 
