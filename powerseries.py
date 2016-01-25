@@ -3,7 +3,7 @@ from itertools import count, islice, repeat, chain, starmap
 
 from .MemoizedGenerator import memoizedGenerator
 
-pstestlimit = 5
+pstestlimit = 10
 
 class PowerSeries(object):
     def __init__(self, g=None):
@@ -116,6 +116,17 @@ class PowerSeries(object):
 
         return PowerSeries(_add)
 
+    __radd__ = __add__
+
+    def __sub__(self, entry):
+        return self + (-entry)
+
+    def __rsub__(self, entry):
+        return entry + (-self)
+
+    def __neg__(self):
+        return self.deep_apply( lambda x: -x )
+
     def __mul__(self, entry):
         """
         >>> Equal((exp(X-Z)/(1-X)) * (exp(Y+Z)/(1-Y)), exp(X+Y)/(1-X-Y+X*Y))
@@ -147,7 +158,7 @@ class PowerSeries(object):
 
             mterms = [(F * G).xmul]
             if is_powerseries(f0) or f0 != 0:
-                f0G = G.deep_apply( lambda x: f0*x )
+                f0G = G.deep_apply( lambda x: x*f0 )
                 mterms.append(f0G)
             if is_powerseries(g0) or g0 != 0:
                 g0F = F.deep_apply( lambda x: x*g0 )
@@ -157,6 +168,8 @@ class PowerSeries(object):
                 yield sum(terms)
 
         return PowerSeries(_mul)
+
+    __rmul__ = __mul__
 
     def __truediv__(self, entry):
         if is_powerseries(entry):
@@ -170,43 +183,41 @@ class PowerSeries(object):
 
     def __rtruediv__(self, entry):
         """
+        >>> A = 10/ (1 - X)
+        >>> Equal(A, 1/(1-X) * 10 )
+        True
+
         >>> B = 1 / (1 - X - X*Y)
         >>> Equal(1/B, 1-X-X*Y)
         True
 
-        """
+        >>> C = 100*solve( Y - X*exp(X) )[0].tail
+        >>> Equal( C/C, 1 )
+        True
 
-        if is_powerseries(entry):
-            return entry * (1/self)
+        """
 
         @memoizedGenerator
         def _rdiv():
             f0 = self.zero
             if isinstance(f0, int):
-                recip = F(entry, f0)
+                recip = F(1, f0)
             else:
-                recip = entry / f0
+                recip = 1 / f0
 
-            yield recip
+            if not is_powerseries(entry):
+                yield entry * recip
 
-            for term in ( (self.tail * R).deep_apply( lambda x: x*(-recip) ) ):
-                yield term
+                for term in ( (self.tail * R).deep_apply( lambda x: -x*recip ) ):
+                    yield term
+            else:
+                yield entry.zero * recip
+
+                for term in ( (entry.tail-self.tail * R).deep_apply( lambda x: x*recip ) ):
+                    yield term
 
         R = PowerSeries(_rdiv)
         return R
-
-    __radd__ = __add__
-
-    def __sub__(self, entry):
-        return self + (-entry)
-
-    def __rsub__(self, entry):
-        return entry + (-self)
-
-    def __neg__(self):
-        return self.deep_apply( lambda x: -x )
-
-    __rmul__ = __mul__
 
     def __pow__( self, alpha ):
         """
@@ -226,9 +237,9 @@ class PowerSeries(object):
             
         f0 = self.zero
         if not is_powerseries(f0) and f0 == 0:
-            if isinstance(alpha, int):
+            if isinstance(alpha, int) and alpha >= 0:
                 if alpha == 0:
-                    return I
+                    return self*0 + 1
                     
                 @memoizedGenerator
                 def _pow():
@@ -239,13 +250,13 @@ class PowerSeries(object):
                 
                 return PowerSeries(_pow)
             else:
-                raise ValueError("Can't raise powerseries with vanishing first term to non integer power")
+                raise ValueError("Can't raise powerseries with vanishing first term to non positive integer power")
 
         c0 = self.zero**alpha if is_powerseries(self.zero) or self.zero != 1 else 1
 
         @memoizedGenerator
         def _pow():
-            for term in integral(alpha * P * D(self)/ self, c0 ):
+            for term in integral(alpha * P * D(self) / self, c0 ):
                 yield term
 
         P = PowerSeries(_pow)
@@ -300,7 +311,7 @@ class PowerSeries(object):
             G = ( self.deep_apply( D, k ) for k in range(n) )
             F = map( D, args )
 
-            r = sum( g.deep_apply(lambda x, f=f: f*x, n) for g,f in zip(G, F) ) + self.deep_apply( get_D, n )
+            r = sum( g.deep_apply(lambda x, f=f: x*f, n) for g,f in zip(G, F) ) + self.deep_apply( get_D, n )
 
             z = self.deep_apply( get_zero, n )
 
@@ -391,11 +402,8 @@ def solve( *args ):
 
     """
 
-    def get_D( d ):
-        if not is_powerseries(d):
-            return 0
-        else:
-            return D(d)
+    get_zero = lambda d: d.zero if is_powerseries(d) else d
+    get_D    = lambda d: D(d)   if is_powerseries(d) else 0
 
     n = len(args)
 
@@ -409,8 +417,6 @@ def solve( *args ):
         else:
             raise ValueError("No solution")
     
-    get_zero = lambda d: d.zero if is_powerseries(d) else d
-
     c0s = solve( *[ a.deep_apply( get_zero, n ) for a in args ] )
 
     m = [ [ a.deep_apply( D, k ) for k in range(n) ] for a in args  ]
