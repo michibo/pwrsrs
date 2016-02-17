@@ -5,6 +5,12 @@ from .MemoizedGenerator import memoizedGenerator
 
 pstestlimit = 10
 
+def num_to_str( term ):
+    if isinstance(term, float):
+        return "\t% .3e" % term
+    else:
+        return "\t"+str(term)
+
 class PowerSeries(object):
     def __init__(self, g=None):
         self.__g = g
@@ -20,7 +26,7 @@ class PowerSeries(object):
     def __str__(self):
         return self.getstr()
 
-    def getstr(self, nums=[]):
+    def getstr(self, nums=[], term_to_str=num_to_str):
         def gen_str():
             if isinstance(nums, int):
                 n = nums
@@ -30,11 +36,6 @@ class PowerSeries(object):
                 r = nums[1:] if nums else []
             
             is_pps = isinstance(self.zero, PowerSeries)
-            def term_to_str( term ):
-                if isinstance(term, float):
-                    return "\t% .3e" % term
-                else:
-                    return "\t"+str(term)
 
             for term in islice(self, n):
                 if is_pps:
@@ -45,7 +46,10 @@ class PowerSeries(object):
         return "".join(gen_str()) + "..."
 
     def __getitem__(self, key):
-        return next(islice(self, key, None))
+        if isinstance(key, slice):
+            return islice(self, key.start, key.stop, key.step)
+        else:
+            return next(islice(self, key, None))
 
     def deep_apply( self, func, n=1 ):
         if n == 0:
