@@ -1,5 +1,5 @@
 
-from powerseries import *
+from pwrsrs import *
 
 def comtet():
     N = 20
