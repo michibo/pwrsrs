@@ -22,6 +22,30 @@ using power series.
 There is not much left of the original code by Peter, but the general 
 functional/generator approach is still the same.
 
+How to use
+==========
+
+    import pwrsrs
+    from pwrsrs import X, Y, Z
+
+    # prints the first 5 powers of 2
+    geometric = 1/(1-2*X)
+    print("Powers of 2\n", geometric)
+
+    # We can get the binomial coefficients
+    # by using their generating function:
+    pascal = 1/(1-X-X*Y)
+
+    # This expands up to order X^10 Y^10
+    print("Pascal triangle: \n", pascal.getstr(10))
+
+    # The exponential generating function T(x) of rooted 
+    # trees fulfills T(x) = x e^(T(x))
+    # we can solve this using pwrsrs:
+    trees = solve( X - Y*pwrsrs.exp(X) )[0]
+
+    print("E.g.f. of rooted trees: \n", trees.getstr(10))
+
 This software is distributed under the MIT license
 
 Copyright (c) for portions of project pwrsrs are held by 

@@ -1,9 +1,22 @@
 from fractions import Fraction as F
 from itertools import count, islice, repeat, chain, starmap
 
-from .MemoizedGenerator import memoizedGenerator
+pstestlimit = 5
 
-pstestlimit = 10
+def memoizedGenerator( gen ):
+    _iter = gen()
+    _cache = []
+
+    def _gen():
+        for n in count():
+            if n < len(_cache):
+                yield _cache[n]
+            else:
+                term = next(_iter)
+                _cache.append(term)
+                yield term
+
+    return _gen
 
 def num_to_str( term ):
     if isinstance(term, float):
