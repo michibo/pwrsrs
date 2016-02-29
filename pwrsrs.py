@@ -59,27 +59,51 @@ class PowerSeries(object):
         return "".join(gen_str()) + "..."
 
     def __getitem__(self, key):
+        """
+
+        Access items of power series with an index or a slice. 
+        Warning: Access by slice just returns a slice and not 
+        a list or tuple.
+
+        Use list(P[:10]) to get a list of the first 10 coefficients.
+
+        """
         if isinstance(key, slice):
             return islice(self, key.start, key.stop, key.step)
         else:
             return next(islice(self, key, None))
 
-    def deep_apply( self, func, n=1 ):
+    def deep_map( self, func, n=1 ):
+        """
+
+        Helper function, which maps a function to the power 
+        series at nestedness level n. Deep_maps is essentially 
+        an iterated map function used to handle the multivariate 
+        power series. 
+
+        """
+
         if n == 0:
             return func(self)
 
         if n == 1:
             @memoizedGenerator
-            def _deep_apply():
+            def _deep_map():
                 return map( func, self )
 
-            return PowerSeries( _deep_apply )
+            return PowerSeries( _deep_map )
         else:
-            return self.deep_apply( lambda x: x.deep_apply(func, n-1) )
+            return self.deep_map( lambda x: x.deep_map(func, n-1) )
 
     @property
     def ord2exp(self):
         """
+
+        Converts an ordinary generating function to an 
+        exponential generating function. 
+
+        Example:
+
         >>> Equal((1/(1-X)).ord2exp, exp(X))
         True
         """
@@ -93,6 +117,12 @@ class PowerSeries(object):
     @property
     def exp2ord(self):
         """
+
+        Converts an exponential generating function to an 
+        ordinary generating function. 
+        
+        Example:
+
         >>> Equal(exp(X).exp2ord, 1/(1-X))
         True
         """
@@ -105,11 +135,24 @@ class PowerSeries(object):
 
     @property
     def zero(self):
+        """ 
+
+        Returns the constant term of the power series. 
+
+        """
+
         for term in self:
             return term
 
     @property
     def tail(self):
+        """ 
+
+        Returns everything except the constant term as a 
+        new power series.
+
+        """
+
         def _tail():
             return islice(self, 1, None)
 
@@ -117,12 +160,24 @@ class PowerSeries(object):
 
     @property
     def xmul(self):
+        """ 
+
+        Shifts the coefficients of the power series P by one 
+        term such that P.xmul has 0 as constant term. 
+
+        """
+        
         def _xmul():
             return chain( ( self.zero*0,), self )
 
         return PowerSeries(_xmul)
 
     def __add__(self, entry):
+        """
+
+        Implements power series addition. 
+
+        """
         if is_powerseries(entry):
             @memoizedGenerator
             def _add():
@@ -142,10 +197,17 @@ class PowerSeries(object):
         return entry + (-self)
 
     def __neg__(self):
-        return self.deep_apply( lambda x: -x )
+        return self.deep_map( lambda x: -x )
 
     def __mul__(self, entry):
         """
+
+        Implements multiplication of power series. Only minor 
+        modifications were necessary in P. Donis original code 
+        to handle multivariate power series. 
+
+        Example:
+
         >>> Equal((exp(X-Z)/(1-X)) * (exp(Y+Z)/(1-Y)), exp(X+Y)/(1-X-Y+X*Y))
         True
         """
@@ -162,7 +224,7 @@ class PowerSeries(object):
                 else:
                     return PowerSeries()
             else:
-                return self.deep_apply( lambda x: x*entry )
+                return self.deep_map( lambda x: x*entry )
         
         @memoizedGenerator
         def _mul():
@@ -175,10 +237,10 @@ class PowerSeries(object):
 
             mterms = [(F * G).xmul]
             if is_powerseries(f0) or f0 != 0:
-                f0G = G.deep_apply( lambda x: x*f0 )
+                f0G = G.deep_map( lambda x: x*f0 )
                 mterms.append(f0G)
             if is_powerseries(g0) or g0 != 0:
-                g0F = F.deep_apply( lambda x: x*g0 )
+                g0F = F.deep_map( lambda x: x*g0 )
                 mterms.append(g0F)
             
             for terms in zip(*mterms):
@@ -200,6 +262,14 @@ class PowerSeries(object):
 
     def __rtruediv__(self, entry):
         """
+
+        Implements division of power series P/Q. If Q has 
+        an integer constant term != 1, the P/Q will be given 
+        as a power series of Fractions even if P is an integer 
+        power series. 
+
+        Examples:
+
         >>> A = 10/ (1 - X)
         >>> Equal(A, 1/(1-X) * 10 )
         True
@@ -225,12 +295,12 @@ class PowerSeries(object):
             if not is_powerseries(entry):
                 yield entry * recip
 
-                for term in ( (self.tail * R).deep_apply( lambda x: -x*recip ) ):
+                for term in ( (self.tail * R).deep_map( lambda x: -x*recip ) ):
                     yield term
             else:
                 yield entry.zero * recip
 
-                for term in ( (entry.tail-self.tail * R).deep_apply( lambda x: x*recip ) ):
+                for term in ( (entry.tail-self.tail * R).deep_map( lambda x: x*recip ) ):
                     yield term
 
         R = PowerSeries(_rdiv)
@@ -238,6 +308,14 @@ class PowerSeries(object):
 
     def __pow__( self, alpha ):
         """
+
+        Implements taking powers of power series. For positive integers 
+        as arguments where are no restrictions on the power series. For all 
+        other exponents the power series needs to have a non-zero constant 
+        coefficient. This function is based on P. Donis' code. 
+
+        Examples:
+
         >>> Equal(X**0, I)
         True
 
@@ -282,24 +360,59 @@ class PowerSeries(object):
     def compose(self, *args):
         """
 
-        >>> Equal((1/(1-X-X*Y)).compose(X,X), 1/(1-X-X**2))
+        Implements general power series composition. The first 
+        argument is composed with the first variable or nestedness 
+        level, the second with the second nestedness level and so on. 
+
+        In power series symbols, compose with 
+        arguments f_1, ..., f_n calculates
+        P( f_1(x,y,z), ..., f_n(x,y,z), x, y, z, ...)
+        Note that we continue with x,y,z if we have more variables 
+        then arguments. 
+        
+        For instance, 
+
+        >>> P = X + 3*Y
+        >>> Equal( P(Y, exp(X)-1), Y + 3*exp(X)-3 )
+        True
+
+        Composition can also be used to shuffle the variables of power 
+        series if necessary:
+
+        >>> P = X*exp(Y)
+        >>> Equal( P(Y, X), Y*exp(X) )
+        True
+
+        Furthermore we can reduce the depth of the powerseries by 
+        associating different variables.
+
+        >>> Equal( P(X,X), X*exp(X) )
+        True
+
+        Note that P(X) gives the same result as P(X,X) if P is a bivariate 
+        power series.
+
+
+        Examples:
+
+        >>> Equal((1/(1-X-X*Y))(X,X), 1/(1-X-X**2))
         True
 
         >>> A = exp(X)
         >>> B = log(1/(1-X)) 
-        >>> Equal( A.compose(B), 1/(1-X) )
+        >>> Equal( A(B), 1/(1-X) )
         True
 
-        >>> Equal((1/(1-X-X*Y)).compose(Y,X), 1/(1-Y-Y*X))
+        >>> Equal((1/(1-X-X*Y))(Y,X), 1/(1-Y-Y*X))
         True
 
-        >>> Equal((1/(1-X-X*Y)).compose(Y), 1/(1-Y-Y*X))
+        >>> Equal((1/(1-X-X*Y))(Y), 1/(1-Y-Y*X))
         True
 
-        >>> Equal((1/(1-X-Z)).compose(X,Y,X*Y), 1/(1-X-X*Y))
+        >>> Equal((1/(1-X-Z))(X,Y,X*Y), 1/(1-X-X*Y))
         True
 
-        >>> Equal((1/(1-X)).compose(Y), 1/(1-Y))
+        >>> Equal((1/(1-X))(Y), 1/(1-Y))
         True
 
         """
@@ -311,7 +424,7 @@ class PowerSeries(object):
 
             if a == 0:
                 if n > 1:
-                    return self.deep_apply( lambda x: x.zero, k )( *(args[:k] + args[k+1:]) )
+                    return self.deep_map( lambda x: x.zero, k )( *(args[:k] + args[k+1:]) )
                 else:
                     return self.zero
             else:
@@ -325,16 +438,16 @@ class PowerSeries(object):
 
         @memoizedGenerator
         def _compose():
-            G = ( self.deep_apply( D, k ) for k in range(n) )
+            G = ( self.deep_map( D, k ) for k in range(n) )
             F = map( D, args )
 
-            r = sum( g.deep_apply(lambda x, f=f: x*f, n) for g,f in zip(G, F) ) + self.deep_apply( get_D, n )
+            r = sum( g.deep_map(lambda x, f=f: x*f, n) for g,f in zip(G, F) ) + self.deep_map( get_D, n )
 
-            z = self.deep_apply( get_zero, n )
+            z = self.deep_map( get_zero, n )
 
-            c0 = z.compose( *map( lambda x: x.zero, args ) )
+            c0 = z( *map( lambda x: x.zero, args ) )
 
-            for term in integral(r.compose(*args), c0):
+            for term in integral(r(*args), c0):
                 yield term
 
         return PowerSeries(_compose)
@@ -357,6 +470,11 @@ def is_powerseries( entry ):
 
 def linsolve( M, b ): 
     """
+
+    Helper function that solves linear equation systems 
+    Mx = b for x where entries of the matrix M and the 
+    vector b can be power series.
+
     >>> W = [ [ exp(X+2*Y), log(1+Y) ], [ X**2 - exp(Y*(exp(X)-1)), 1/(1-X*Y-X) ]  ]
     >>> B = [  X + Y*3 ,  1/(1-X*Y) ]
     >>> W2 = W[:]
@@ -401,12 +519,29 @@ def linsolve( M, b ):
 
 def solve( *args ):
     """
+
+    This function solves arbitrary equation systems for power series 
+    (as far as the solution in terms of power series is straightforward).
+    
+    Each argument is an equation giving a restriction on the solution. 
+    
+    In power series symbols this function with f_1, ..., f_n 
+    given as arguments calculates the solutions g_1, ..., g_n of
+
+    f_1(g_1(X,Y,...),..., g_n(X,Y,...),X,Y,...) = 0
+    f_2(g_1(X,Y,...),..., g_n(X,Y,...),X,Y,...) = 0
+    ...
+    f_n(g_1(X,Y,...),..., g_n(X,Y,...),X,Y,...) = 0
+
+    The solutions g_1, ..., g_n are returned as a tuple. 
+
+    Examples:
         
     >>> Equal(solve( Y-1 + exp(X))[0], log(1-X))
     True
 
     >>> T = [ log(1+X) + exp(Y)-1 + Z, 1/(1-X-X*Y) - 1 + Z ]
-    >>> all( Equal(t.compose( solve(t)[0] ), tensor(ZERO, ZERO)) for t in T )
+    >>> all( Equal(t( solve(t)[0] ), tensor(ZERO, ZERO)) for t in T )
     True
 
     >>> W = [ X + Y + 2*Z + Y*Y - Y*Y*Y, X + Z + X*X ]
@@ -434,10 +569,10 @@ def solve( *args ):
         else:
             raise ValueError("No solution")
     
-    c0s = solve( *[ a.deep_apply( get_zero, n ) for a in args ] )
+    c0s = solve( *[ a.deep_map( get_zero, n ) for a in args ] )
 
-    m = [ [ a.deep_apply( D, k ) for k in range(n) ] for a in args  ]
-    b = [  -a.deep_apply( get_D, n ) for a in args ]
+    m = [ [ a.deep_map( D, k ) for k in range(n) ] for a in args  ]
+    b = [  -a.deep_map( get_D, n ) for a in args ]
 
     dfs = linsolve( m, b )
     
@@ -454,6 +589,12 @@ def solve( *args ):
     return SOL
 
 def D( f, n=1 ):
+    """
+
+    Gives the term-wise derivative of a power series. 
+
+    """
+
     if n == 1:
         @memoizedGenerator
         def _D():
@@ -468,6 +609,12 @@ def D( f, n=1 ):
         raise ValueError("Can't take %d-th derivative" % n)
 
 def integral( f, const=0 ):
+    """
+
+    Gives the term-wise integral of a power series. 
+
+    """
+
     @memoizedGenerator
     def _int():
         return chain( (const,), starmap( lambda n,x: F(1,n+1)*x, enumerate(f) ) )
@@ -475,6 +622,22 @@ def integral( f, const=0 ):
     return PowerSeries(_int)
 
 def tensor( *args ):
+    """
+    
+    Multiplies two power series and concatinates the variables. That means 
+    if f_1, ..., f_n are given as arguments, tensor calculates,
+
+    f_1(X_1, ..., X_n) f_2(X_(n+1), ..., X_m) f_3(X_(m+1), ... ) ...
+
+    Example:
+
+    >>> A = exp(X)
+    >>> B = log(1+X)
+
+    >>> Equal( tensor(A,B)(X,X), A*B )
+    True
+    """
+
     if len(args) == 1:
         return args[0]
     elif len(args) > 2:
@@ -485,18 +648,17 @@ def tensor( *args ):
         if not is_powerseries(f0) or not is_powerseries(f1):
             return f0 * f1
         else:
-            return f0.deep_apply( lambda x: tensor(x, f1) )
+            return f0.deep_map( lambda x: tensor(x, f1) )
     else:
         return 0
 
 def exp( f ):
-    if not is_powerseries(f):
-        if f == 0:
-            return 1
-        else:
-            raise ValueError("You can't calculate exp of %d with the powerseries package" % f)
-
     """
+
+    Implements the exponential on power series. This function is based on P. Donis 
+    implementation.
+
+    Examples:
 
     >>> e = exp(X)
     >>> Equal( e, D(e) )
@@ -518,6 +680,13 @@ def exp( f ):
     else:
         raise ValueError("Can't take exp of powerseries with non-zero constant term")
 
+    if not is_powerseries(f):
+        if f == 0:
+            return 1
+        else:
+            raise ValueError("You can't calculate exp of %d with the powerseries package" % f)
+
+
     @memoizedGenerator
     def _exp():
         for term in integral( E * D(f), c0 ):
@@ -528,6 +697,11 @@ def exp( f ):
 
 def log( f ):
     """
+
+    Implements the logarithm on power series. This function is based on P. Donis 
+    implementation.
+
+    Examples:
 
     >>> l = log(1+X) 
     >>> Equal( 3*l, log((1+X)*(1+X)*(1+X)) )
