@@ -28,9 +28,15 @@ How to use
     import pwrsrs
     from pwrsrs import X, Y, Z
 
+The symbols X, Y, Z can be imported to make power series expressions as 
+readable as possible.
+
     # prints the first 5 powers of 2
     geometric = 1/(1-2*X)
     print("Powers of 2\n", geometric)
+
+Multivariate power series are stored as power series of power series. 
+The output is in matrix form.
 
     # We can get the binomial coefficients
     # by using their generating function:
@@ -39,12 +45,18 @@ How to use
     # This expands up to order X^10 Y^10
     print("Pascal triangle: \n", pascal.getstr(10))
 
+Pwrsrs' main feature is that it can solve arbitrary equation systems 
+in power series. 
+
     # The exponential generating function T(x) of rooted 
     # trees fulfills T(x) = x e^(T(x))
     # we can solve this using pwrsrs:
     trees = solve( X - Y*pwrsrs.exp(X) )[0]
 
     print("E.g.f. of rooted trees: \n", trees.getstr(10))
+
+
+
 
 This software is distributed under the MIT license
 
