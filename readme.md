@@ -22,8 +22,13 @@ using power series.
 There is not much left of the original code by Peter, but the general 
 functional/generator approach is still the same.
 
-How to use
-==========
+Prerequisites
+=============
+
+You need Python 2 or 3 to run *pwrsrs*. 
+
+How to use it
+=============
 
     import pwrsrs
     from pwrsrs import X, Y, Z
@@ -55,18 +60,27 @@ in power series.
 
     print("E.g.f. of rooted trees: \n", trees.getstr(10))
 
+Test
+====
 
+You can make a test run of pwrsrs by invoking 
+
+    python pwrsrs.py
+
+or
+
+    python benchmark.py
 
 
 This software is distributed under the MIT license
 
-Copyright (c) for portions of project pwrsrs are held by 
+Copyright (c) for portions of project *pwrsrs* are held by 
 
 Peter A. Donis, 2011 
 
-as part of project powerseries. 
+as part of project *powerseries*. 
 
-All other copyright for project pwrsrs are held by 
+All other copyright for project *pwrsrs* are held by 
 
 Michael Borinsky, 2016.
 

@@ -2,6 +2,12 @@ from fractions import Fraction as F
 from itertools import count, islice, repeat, chain, starmap
 import math
 
+try:
+    from itertools import izip as zip
+    from itertools import imap as map
+except ImportError: # will be 3.x series
+    pass
+
 pstestlimit = 5
 
 def memoizedGenerator( gen ):
@@ -305,6 +311,9 @@ class PowerSeries(object):
 
         R = PowerSeries(_rdiv)
         return R
+
+    __div__ = __truediv__
+    __rdiv__ = __rtruediv__
 
     def __pow__( self, alpha ):
         """

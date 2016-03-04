@@ -1,7 +1,10 @@
 
+from __future__ import print_function
+
 from itertools import count
 import pwrsrs
 from pwrsrs import PowerSeries, X, Y, Z
+
 
 def comtet():
     N = 10
