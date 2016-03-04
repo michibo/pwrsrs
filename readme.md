@@ -4,7 +4,7 @@ pwrsrs - Multivariate Power Series for Python, seriously?
 
 This is a Python implementation of multivariate power series arithmetic. 
 
-It is based on Peter A. Donis Python implementation powerseries, which 
+It is based on Peter A. Donis Python implementation *powerseries*, which 
 itself is based on a paper by Doug McIlroy 'Squinting at Power Series', 
 http://doc.cat-v.org/bell_labs/squinting_at_power_series/squint.pdf. 
 See also his paper 'Music of Streams', http://www.cs.dartmouth.edu/~doug/music.ps.gz. 
@@ -63,7 +63,7 @@ in power series.
 Test
 ====
 
-You can make a test run of pwrsrs by invoking 
+You can make a test run of *pwrsrs* by invoking 
 
     python pwrsrs.py
 
