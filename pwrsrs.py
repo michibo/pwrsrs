@@ -1,5 +1,6 @@
 from fractions import Fraction as F
 from itertools import count, islice, repeat, chain, starmap
+import math
 
 pstestlimit = 5
 
@@ -27,7 +28,6 @@ def num_to_str( term ):
 class PowerSeries(object):
     def __init__(self, g=None):
         self.__g = g
-        self.__zero = None
 
     def __eq__(self, entry):
         print("Warning: comparing powerseries!")
@@ -342,6 +342,122 @@ class PowerSeries(object):
     def __call__( self, *args ):
         return self.compose(*args)
 
+    def exp( self ):
+        if not is_powerseries(self):
+            if self == 0:
+                return 1
+            else:
+                raise ValueError("You can't calculate exp of %d with the powerseries package" % self)
+
+        """
+
+        >>> e = exp(X)
+        >>> Equal( e, D(e) )
+        True
+        >>> Equal( e, integral(e, 1) )
+        True
+        >>> Equal( log(e), X )
+        True
+        >>> d = exp(3*X*X)
+        >>> Equal(d*e, exp(X + 3*X**2))
+        True
+
+        """
+        f0 = self.zero
+        if is_powerseries( f0 ):
+            c0 = exp(f0)
+        elif f0 == 0:
+            c0 = 1
+        else:
+            raise ValueError("Can't take exp of powerseries with non-zero constant term")
+
+        @memoizedGenerator
+        def _exp():
+            for term in integral( E * D(self), c0 ):
+                yield term
+
+        E = PowerSeries(_exp)
+        return E
+
+    def log( self ):
+        """
+
+        >>> l = log(1+X) 
+        >>> Equal( 3*l, log((1+X)*(1+X)*(1+X)) )
+        True
+        >>> Equal( D(l), 1/(1+X) )
+        True
+
+        """
+        f0 = self.zero
+        if is_powerseries( f0 ):
+            c0 = log(f0)
+        elif f0 == 1:
+            c0 = 0
+        else:
+            raise ValueError("Can't take log of powerseries with non-unit constant term")
+
+        @memoizedGenerator
+        def _log():
+            for term in integral( D(self)/self, c0 ):
+                yield term
+
+        return PowerSeries(_log)
+
+    def D( self, n=1 ):
+        if n == 1:
+            @memoizedGenerator
+            def _D():
+                return starmap( lambda n,x: (n+1)*x, enumerate(self.tail) )
+
+            return PowerSeries(_D)
+        elif n == 0:
+            return f
+        elif isinstance(n, int) and n > 1:
+            return D( D(self), n-1 )
+        else:
+            raise ValueError("Can't take %d-th derivative" % n)
+
+    def integral( self, const=0 ):
+        @memoizedGenerator
+        def _int():
+            return chain( (const,), starmap( lambda n,x: F(1,n+1)*x, enumerate(self) ) )
+
+        return PowerSeries(_int)
+
+def exp( f ):
+    if is_powerseries(f):
+        return f.exp()
+    else:
+        return math.exp(f)
+
+def log( f ):
+    if is_powerseries(f):
+        return f.log()
+    else:
+        return math.log(f)
+
+def D( f, n=1 ):
+    return f.D(n)
+
+def integral( f, const=0 ):
+    return f.integral(const)
+
+def tensor( *args ):
+    if len(args) == 1:
+        return args[0]
+    elif len(args) == 2:
+        f0, f1 = args[0], args[1]
+
+        if not is_powerseries(f0) or not is_powerseries(f1):
+            return f0 * f1
+        else:
+            return f0.deep_apply( lambda x: tensor(x, f1) )
+    elif len(args) > 2:
+        return tensor( args[0], tensor( *args[1:] ) )
+    else:
+        return 0
+
 def Equal( entry1, entry2, n=pstestlimit ):
     if not is_powerseries( entry1 ) and not is_powerseries( entry2 ):
         return entry1 == entry2
@@ -452,104 +568,6 @@ def solve( *args ):
     SOL = tuple( make_solver( df, c0 ) for df, c0 in zip(dfs, c0s) )
 
     return SOL
-
-def D( f, n=1 ):
-    if n == 1:
-        @memoizedGenerator
-        def _D():
-            return starmap( lambda n,x: (n+1)*x, enumerate(f.tail) )
-
-        return PowerSeries(_D)
-    elif n == 0:
-        return f
-    elif isinstance(n, int) and n > 1:
-        return D( D(f), n-1 )
-    else:
-        raise ValueError("Can't take %d-th derivative" % n)
-
-def integral( f, const=0 ):
-    @memoizedGenerator
-    def _int():
-        return chain( (const,), starmap( lambda n,x: F(1,n+1)*x, enumerate(f) ) )
-
-    return PowerSeries(_int)
-
-def tensor( *args ):
-    if len(args) == 1:
-        return args[0]
-    elif len(args) > 2:
-        return tensor( args[0], tensor( *args[1:] ) )
-    elif len(args) == 2:
-        f0, f1 = args[0], args[1]
-
-        if not is_powerseries(f0) or not is_powerseries(f1):
-            return f0 * f1
-        else:
-            return f0.deep_apply( lambda x: tensor(x, f1) )
-    else:
-        return 0
-
-def exp( f ):
-    if not is_powerseries(f):
-        if f == 0:
-            return 1
-        else:
-            raise ValueError("You can't calculate exp of %d with the powerseries package" % f)
-
-    """
-
-    >>> e = exp(X)
-    >>> Equal( e, D(e) )
-    True
-    >>> Equal( e, integral(e, 1) )
-    True
-    >>> Equal( log(e), X )
-    True
-    >>> d = exp(3*X*X)
-    >>> Equal(d*e, exp(X + 3*X**2))
-    True
-
-    """
-    f0 = f.zero
-    if is_powerseries( f0 ):
-        c0 = exp(f0)
-    elif f0 == 0:
-        c0 = 1
-    else:
-        raise ValueError("Can't take exp of powerseries with non-zero constant term")
-
-    @memoizedGenerator
-    def _exp():
-        for term in integral( E * D(f), c0 ):
-            yield term
-
-    E = PowerSeries(_exp)
-    return E
-
-def log( f ):
-    """
-
-    >>> l = log(1+X) 
-    >>> Equal( 3*l, log((1+X)*(1+X)*(1+X)) )
-    True
-    >>> Equal( D(l), 1/(1+X) )
-    True
-
-    """
-    f0 = f.zero
-    if is_powerseries( f0 ):
-        c0 = log(f0)
-    elif f0 == 1:
-        c0 = 0
-    else:
-        raise ValueError("Can't take log of powerseries with non-unit constant term")
-
-    @memoizedGenerator
-    def _log():
-        for term in integral( D(f)/f, c0 ):
-            yield term
-
-    return PowerSeries(_log)
 
 ZERO = PowerSeries()
 I = 1 + ZERO

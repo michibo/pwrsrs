@@ -29,9 +29,16 @@ def trees():
     Tu_unlab = pwrsrs.solve( -X + Y*Z + Y*(pwrsrs.exp(X)-1))[0]
     print("bivariate generating function of trees with n nodes and m leaves: \n", Tu_unlab.getstr(N))
 
+def binomial():
+    N = 20
+    pascal = 1/(1-X-X*Y)
+
+    print("bivariate generating function of binomial coefficients: \n", pascal.getstr(N))
+    
 def main():
     comtet()
     trees()
+    binomial()
 
 if __name__ == '__main__':
     import cProfile
